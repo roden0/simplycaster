@@ -1,0 +1,2957 @@
+@import "tailwindcss";
+.fresh-gradient {
+  background-color: rgb(134, 239, 172);
+  background-image: linear-gradient(
+    to right bottom,
+    rgb(219, 234, 254),
+    rgb(187, 247, 208),
+    rgb(254, 249, 195)
+  );
+}
+
+/* Login Page Semantic Classes */
+
+/* Layout Classes */
+.login-page {
+  @apply px-4 py-4 mx-auto flex-1 flex justify-center items-start;
+  @apply md:items-center md:py-8;
+}
+
+.login-form-container {
+  @apply max-w-sm w-full md:max-w-md flex flex-col items-center;
+  @apply bg-white rounded-lg shadow-md p-4 md:p-8;
+}
+
+.dark .login-form-container {
+  @apply bg-gray-800 shadow-xl border border-gray-700;
+}
+
+/* Typography Classes */
+.login-title {
+  @apply text-2xl md:text-3xl font-bold text-gray-800 mb-6;
+}
+
+.dark .login-title {
+  @apply text-gray-200;
+}
+
+/* Form Classes */
+.form-group {
+  @apply mb-4 w-full;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 mb-2;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+.form-input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-md;
+  @apply focus:outline-none focus:ring-2 focus:ring-gray-500
+    focus:border-gray-500;
+  @apply transition-colors;
+}
+
+.dark .form-input {
+  @apply bg-gray-700 border-gray-600 text-white;
+  @apply focus:ring-gray-400 focus:border-gray-400;
+}
+
+.primary-button {
+  @apply w-full bg-gray-800 text-white py-2 px-4 rounded-md;
+  @apply hover:bg-gray-900 transition-colors text-sm md:text-base;
+}
+
+.dark .primary-button {
+  @apply bg-gray-600 hover:bg-gray-500;
+}
+
+/* Theme Toggle Classes */
+.theme-toggle {
+  @apply fixed top-4 right-4 p-2 rounded-md;
+  @apply bg-gray-200 hover:bg-gray-300 transition-colors;
+  @apply cursor-pointer border-none text-lg;
+}
+
+.dark .theme-toggle {
+  @apply bg-gray-700 hover:bg-gray-600 text-gray-300;
+}
+
+/* Application Layout Classes */
+
+/* Main Layout Container */
+.app-layout {
+  @apply min-h-screen flex flex-col;
+  @apply bg-white text-gray-900;
+  @apply transition-colors duration-200;
+}
+
+.dark .app-layout {
+  @apply bg-gray-900 text-gray-100;
+}
+
+/* Header Layout */
+.app-header {
+  @apply sticky top-0 z-10;
+  @apply bg-white border-b border-gray-200;
+  @apply px-4 py-2 md:px-6 md:py-4;
+  @apply flex items-center justify-between;
+  @apply transition-colors duration-200;
+}
+
+.dark .app-header {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Header Title */
+.app-header h1 {
+  @apply text-lg md:text-xl lg:text-2xl font-bold;
+  @apply text-gray-800;
+}
+
+.dark .app-header h1 {
+  @apply text-gray-100;
+}
+
+/* Header Navigation */
+.app-header nav {
+  @apply flex items-center space-x-2 md:space-x-4;
+}
+
+/* Main Content Area */
+.app-main {
+  @apply flex-1 flex flex-col;
+  @apply px-4 py-2 md:px-6 md:py-8;
+  @apply bg-gray-50;
+  @apply transition-colors duration-200;
+}
+
+.dark .app-main {
+  @apply bg-gray-900;
+}
+
+/* Footer Layout */
+.app-footer {
+  @apply mt-auto;
+  @apply bg-white border-t border-gray-200;
+  @apply px-4 py-2 md:px-6 md:py-4;
+  @apply text-center text-sm;
+  @apply text-gray-600;
+  @apply transition-colors duration-200;
+}
+
+.dark .app-footer {
+  @apply bg-gray-800 border-gray-700 text-gray-400;
+}
+
+/* Footer Content Structure */
+.footer-content {
+  @apply flex flex-col items-center space-y-2;
+  @apply md:flex-row md:justify-between md:items-center md:space-y-0;
+  @apply max-w-7xl mx-auto;
+}
+
+.footer-text {
+  @apply text-gray-600 text-sm;
+}
+
+.dark .footer-text {
+  @apply text-gray-400;
+}
+
+.footer-nav {
+  @apply flex items-center;
+}
+
+.footer-links {
+  @apply flex items-center space-x-4;
+}
+
+.footer-link-placeholder {
+  @apply text-gray-500 text-sm cursor-default;
+  @apply hover:text-gray-700 transition-colors;
+}
+
+.dark .footer-link-placeholder {
+  @apply text-gray-500 hover:text-gray-300;
+}
+
+/* Responsive Layout Adjustments */
+
+/* Mobile First - Base styles above are mobile */
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  .app-header {
+    @apply px-8 py-4;
+  }
+
+  .app-main {
+    @apply px-8 py-8;
+  }
+
+  .app-footer {
+    @apply px-8 py-4;
+  }
+}
+
+/* Desktop and up */
+@media (min-width: 1024px) {
+  .app-header {
+    @apply px-12 py-6;
+  }
+
+  .app-main {
+    @apply px-12 py-12;
+    @apply max-w-7xl mx-auto w-full;
+  }
+
+  .app-footer {
+    @apply px-12 py-6;
+  }
+}
+
+/* Layout Theme Toggle Integration */
+.app-header .theme-toggle {
+  @apply relative top-auto right-auto;
+  @apply bg-gray-100 hover:bg-gray-200;
+  @apply p-2 rounded-lg;
+}
+
+.dark .app-header .theme-toggle {
+  @apply bg-gray-700 hover:bg-gray-600;
+}
+
+/* Room Page Styles */
+
+/* Main Room Layout */
+.room-page {
+  @apply h-screen flex flex-col bg-gray-900 text-white overflow-hidden;
+}
+
+.webrtc-room {
+  @apply h-full flex flex-col;
+}
+
+/* Room Header - Controls Bar */
+.room-header {
+  @apply bg-gray-800 border-b border-gray-700 px-4 py-3;
+  @apply flex-shrink-0;
+}
+
+.recording-controls {
+  @apply flex items-center justify-between w-full max-w-7xl mx-auto;
+}
+
+.recording-actions {
+  @apply flex items-center space-x-4;
+}
+
+.room-actions {
+  @apply flex items-center space-x-3;
+}
+
+/* Recording Control Buttons */
+.record-button {
+  @apply bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg;
+  @apply flex items-center space-x-2 font-medium transition-colors;
+  @apply focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
+    focus:ring-offset-gray-800;
+}
+
+.record-button:disabled {
+  @apply bg-gray-600 cursor-not-allowed;
+}
+
+.record-icon {
+  @apply text-xl;
+}
+
+.stop-button {
+  @apply bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg;
+  @apply flex items-center space-x-2 font-medium transition-colors;
+  @apply focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2
+    focus:ring-offset-gray-800;
+}
+
+.stop-icon {
+  @apply text-lg;
+}
+
+.invite-button {
+  @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg;
+  @apply flex items-center space-x-2 transition-colors;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+    focus:ring-offset-gray-800;
+}
+
+.leave-button {
+  @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg;
+  @apply flex items-center space-x-2 transition-colors;
+  @apply focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2
+    focus:ring-offset-gray-800;
+}
+
+.invite-icon,
+.leave-icon {
+  @apply text-lg;
+}
+
+/* Main Video Area */
+.room-main {
+  @apply flex-1 p-4 overflow-hidden;
+}
+
+.video-mosaic {
+  @apply h-full w-full;
+}
+
+.video-grid {
+  @apply h-full w-full gap-4;
+}
+
+.video-grid-1 {
+  @apply grid grid-cols-1;
+}
+
+.video-grid-2 {
+  @apply grid grid-cols-1 md:grid-cols-2;
+}
+
+.video-grid-4 {
+  @apply grid grid-cols-2;
+}
+
+.video-grid-6 {
+  @apply grid grid-cols-2 md:grid-cols-3;
+}
+
+.video-grid-many {
+  @apply grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4;
+}
+
+/* Participant Video Boxes */
+.participant-box {
+  @apply relative bg-gray-800 rounded-lg overflow-hidden;
+  @apply border-2 border-gray-700 transition-all duration-200;
+  @apply min-h-[200px] flex flex-col;
+}
+
+.participant-box.current-user {
+  @apply border-blue-500;
+}
+
+.video-container {
+  @apply flex-1 relative bg-gray-900;
+}
+
+.participant-video {
+  @apply w-full h-full object-cover;
+}
+
+.video-placeholder {
+  @apply absolute inset-0 flex items-center justify-center bg-gray-800;
+}
+
+.avatar-placeholder {
+  @apply w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center;
+  @apply text-2xl font-bold text-white;
+}
+
+/* Participant Info Bar */
+.participant-info {
+  @apply bg-gray-800/90 p-3 flex items-center justify-between;
+  @apply border-t border-gray-700;
+}
+
+.participant-details {
+  @apply flex items-center space-x-3 flex-1;
+}
+
+.participant-name {
+  @apply font-medium text-white flex items-center space-x-2;
+}
+
+.host-badge {
+  @apply bg-yellow-600 text-yellow-100 px-2 py-1 rounded text-xs font-medium;
+}
+
+.you-badge {
+  @apply bg-blue-600 text-blue-100 px-2 py-1 rounded text-xs font-medium;
+}
+
+.participant-status {
+  @apply flex items-center space-x-2;
+}
+
+.audio-status,
+.video-status {
+  @apply text-lg;
+}
+
+.audio-status.disabled,
+.video-status.disabled {
+  @apply opacity-50;
+}
+
+.kick-button {
+  @apply bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full;
+  @apply flex items-center justify-center transition-colors;
+  @apply focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+/* Empty Room State */
+.empty-room {
+  @apply h-full flex items-center justify-center;
+}
+
+.empty-room-message {
+  @apply text-center text-gray-400;
+}
+
+.empty-room-message h3 {
+  @apply text-xl font-medium mb-2;
+}
+
+/* Room Footer - Recording Status */
+.room-footer {
+  @apply bg-gray-800 border-t border-gray-700 px-4 py-3;
+  @apply flex-shrink-0;
+}
+
+.recording-status {
+  @apply flex items-center justify-center space-x-6;
+}
+
+.recording-timer {
+  @apply text-center;
+}
+
+.timer-display {
+  @apply text-3xl font-mono font-bold text-white;
+  @apply tabular-nums;
+}
+
+.recording-indicator {
+  @apply flex items-center space-x-2;
+}
+
+.recording-dot {
+  @apply w-3 h-3 bg-red-500 rounded-full animate-pulse;
+}
+
+.recording-text {
+  @apply text-red-400 font-medium uppercase tracking-wide;
+}
+
+.paused-indicator {
+  @apply flex items-center;
+}
+
+.paused-text {
+  @apply text-yellow-400 font-medium uppercase tracking-wide;
+}
+
+/* Dialog Styles */
+
+/* Base dialog styling */
+dialog {
+  @apply border-none rounded-lg shadow-xl;
+  @apply max-w-md w-full mx-auto;
+  @apply p-0 bg-transparent;
+}
+
+dialog::backdrop {
+  @apply bg-black/50 backdrop-blur-sm;
+}
+
+/* Connection Dialog */
+.connection-dialog {
+  @apply max-w-sm;
+}
+
+.connection-content {
+  @apply bg-gray-800 text-white p-6 rounded-lg text-center;
+}
+
+.connection-message {
+  @apply text-lg mb-4;
+}
+
+.loading-spinner {
+  @apply w-8 h-8 border-4 border-gray-600 border-t-white rounded-full
+    animate-spin mx-auto;
+}
+
+/* Error Dialog */
+.error-dialog {
+  @apply max-w-md;
+}
+
+.error-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .error-content {
+  @apply bg-gray-800;
+}
+
+.error-header {
+  @apply bg-red-600 text-white px-6 py-4;
+}
+
+.error-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.error-body {
+  @apply px-6 py-4;
+}
+
+.error-body p {
+  @apply text-gray-700 m-0;
+}
+
+.dark .error-body p {
+  @apply text-gray-300;
+}
+
+.error-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end;
+}
+
+.dark .error-actions {
+  @apply bg-gray-700;
+}
+
+.error-dismiss-btn {
+  @apply bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded
+    transition-colors focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+/* Invite Dialog */
+.invite-dialog {
+  @apply max-w-lg;
+}
+
+.invite-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .invite-content {
+  @apply bg-gray-800;
+}
+
+.invite-header {
+  @apply bg-blue-600 text-white px-6 py-4 flex items-center justify-between;
+}
+
+.invite-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.dialog-close-btn {
+  @apply text-white hover:text-gray-200 text-xl font-bold
+    w-8 h-8 flex items-center justify-center rounded
+    hover:bg-blue-700 transition-colors;
+}
+
+.invite-body {
+  @apply px-6 py-4 space-y-4;
+}
+
+.invite-body p {
+  @apply text-gray-700 m-0;
+}
+
+.dark .invite-body p {
+  @apply text-gray-300;
+}
+
+.invite-link-container {
+  @apply flex gap-2;
+}
+
+.invite-link-input {
+  @apply flex-1 px-3 py-2 border border-gray-300 rounded-md
+    bg-gray-50 text-sm font-mono
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .invite-link-input {
+  @apply bg-gray-700 border-gray-600 text-gray-200;
+}
+
+.copy-link-btn {
+  @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md
+    transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500
+    whitespace-nowrap;
+}
+
+.copy-link-btn.copied {
+  @apply bg-green-600 hover:bg-green-700;
+}
+
+.invite-info {
+  @apply bg-blue-50 border border-blue-200 rounded-md p-3;
+}
+
+.dark .invite-info {
+  @apply bg-blue-900/20 border-blue-800;
+}
+
+.invite-note {
+  @apply text-sm text-blue-700 m-0;
+}
+
+.dark .invite-note {
+  @apply text-blue-300;
+}
+
+.invite-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end;
+}
+
+.dark .invite-actions {
+  @apply bg-gray-700;
+}
+
+.invite-close-btn {
+  @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded
+    transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .recording-controls {
+    @apply flex-col space-y-3;
+  }
+
+  .recording-actions,
+  .room-actions {
+    @apply justify-center;
+  }
+
+  .timer-display {
+    @apply text-2xl;
+  }
+
+  .participant-box {
+    @apply min-h-[150px];
+  }
+
+  .avatar-placeholder {
+    @apply w-12 h-12 text-lg;
+  }
+}
+
+/* Dark theme is default for room page, but add light theme support */
+.room-page.light-theme {
+  @apply bg-gray-100 text-gray-900;
+}
+
+.light-theme .webrtc-room {
+  @apply text-gray-900;
+}
+
+.light-theme .room-header {
+  @apply bg-white border-gray-200;
+}
+
+.light-theme .participant-box {
+  @apply bg-white border-gray-300;
+}
+
+.light-theme .participant-info {
+  @apply bg-gray-50 border-gray-200;
+}
+
+.light-theme .room-footer {
+  @apply bg-white border-gray-200;
+}
+
+.light-theme .timer-display {
+  @apply text-gray-900;
+}
+/* Archive Page Styles */
+
+.archive-page {
+  @apply min-h-screen bg-gray-50;
+}
+
+.dark .archive-page {
+  @apply bg-gray-900;
+}
+
+.archive-manager {
+  @apply relative;
+}
+
+.archive-container {
+  @apply max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8;
+}
+
+/* Archive Header */
+.archive-header {
+  @apply mb-8;
+}
+
+.archive-title h1 {
+  @apply text-3xl font-bold text-gray-900 mb-2;
+}
+
+.dark .archive-title h1 {
+  @apply text-gray-100;
+}
+
+.archive-subtitle {
+  @apply text-gray-600 text-lg;
+}
+
+.dark .archive-subtitle {
+  @apply text-gray-400;
+}
+
+.archive-controls {
+  @apply mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4;
+}
+
+/* Search Controls */
+.search-container {
+  @apply relative flex-1 max-w-md;
+}
+
+.search-input {
+  @apply w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900;
+}
+
+.dark .search-input {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.search-icon {
+  @apply absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400;
+}
+
+/* Sort Controls */
+.sort-controls {
+  @apply flex items-center gap-2;
+}
+
+.sort-label {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.dark .sort-label {
+  @apply text-gray-300;
+}
+
+.sort-select {
+  @apply px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+}
+
+.dark .sort-select {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+/* Main Content Layout */
+.archive-content {
+  @apply flex flex-col lg:flex-row gap-6;
+}
+
+.recordings-list {
+  @apply flex-1;
+}
+
+.recording-sidebar {
+  @apply lg:w-96 bg-white rounded-lg shadow-md border border-gray-200;
+}
+
+.dark .recording-sidebar {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Recording Items */
+.recording-item {
+  @apply bg-white border border-gray-200 rounded-lg p-4 mb-4
+    cursor-pointer transition-all duration-200
+    hover:shadow-md hover:border-gray-300;
+}
+
+.dark .recording-item {
+  @apply bg-gray-800 border-gray-700 hover:border-gray-600;
+}
+
+.recording-item.selected {
+  @apply border-blue-500 shadow-md;
+}
+
+.dark .recording-item.selected {
+  @apply border-blue-400;
+}
+
+.recording-item {
+  @apply flex items-start justify-between;
+}
+
+.recording-info {
+  @apply flex-1;
+}
+
+.recording-header {
+  @apply mb-2;
+}
+
+.recording-name {
+  @apply text-lg font-semibold text-gray-900 mb-1;
+}
+
+.dark .recording-name {
+  @apply text-gray-100;
+}
+
+.recording-meta {
+  @apply flex flex-wrap items-center gap-4 text-sm text-gray-600;
+}
+
+.dark .recording-meta {
+  @apply text-gray-400;
+}
+
+.recording-date,
+.recording-duration,
+.participant-count {
+  @apply flex items-center gap-1;
+}
+
+.recording-participants {
+  @apply text-sm;
+}
+
+.participants-label {
+  @apply font-medium text-gray-700;
+}
+
+.dark .participants-label {
+  @apply text-gray-300;
+}
+
+.participants-list {
+  @apply text-gray-600 ml-2;
+}
+
+.dark .participants-list {
+  @apply text-gray-400;
+}
+
+.recording-actions {
+  @apply flex items-center gap-2 ml-4;
+}
+
+.delete-btn {
+  @apply p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+.dark .delete-btn {
+  @apply hover:bg-red-900/20;
+}
+
+/* Empty State */
+.empty-state {
+  @apply text-center py-12;
+}
+
+.empty-icon {
+  @apply text-6xl mb-4;
+}
+
+.empty-state h3 {
+  @apply text-xl font-semibold text-gray-900 mb-2;
+}
+
+.dark .empty-state h3 {
+  @apply text-gray-100;
+}
+
+.empty-state p {
+  @apply text-gray-600;
+}
+
+.dark .empty-state p {
+  @apply text-gray-400;
+}
+
+/* Pagination */
+.pagination {
+  @apply flex items-center justify-between mt-6 pt-4 border-t border-gray-200;
+}
+
+.dark .pagination {
+  @apply border-gray-700;
+}
+
+.pagination-btn {
+  @apply px-4 py-2 bg-white border border-gray-300 rounded-lg
+    hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .pagination-btn {
+  @apply bg-gray-800 border-gray-600 hover:bg-gray-700
+    focus:ring-blue-400;
+}
+
+.pagination-info {
+  @apply text-sm text-gray-600;
+}
+
+.dark .pagination-info {
+  @apply text-gray-400;
+}
+
+/* Sidebar Styles */
+.sidebar-header {
+  @apply flex items-center justify-between p-4 border-b border-gray-200;
+}
+
+.dark .sidebar-header {
+  @apply border-gray-700;
+}
+
+.sidebar-header h2 {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.dark .sidebar-header h2 {
+  @apply text-gray-100;
+}
+
+.sidebar-close {
+  @apply p-1 text-gray-400 hover:text-gray-600 rounded
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .sidebar-close {
+  @apply hover:text-gray-200;
+}
+
+.sidebar-content {
+  @apply p-4 space-y-6;
+}
+
+/* Recording Summary */
+.recording-summary h3 {
+  @apply text-xl font-semibold text-gray-900 mb-4;
+}
+
+.dark .recording-summary h3 {
+  @apply text-gray-100;
+}
+
+.summary-grid {
+  @apply grid grid-cols-1 gap-3 mb-4;
+}
+
+.summary-item {
+  @apply flex justify-between;
+}
+
+.summary-item label {
+  @apply font-medium text-gray-700;
+}
+
+.dark .summary-item label {
+  @apply text-gray-300;
+}
+
+.summary-item span {
+  @apply text-gray-900;
+}
+
+.dark .summary-item span {
+  @apply text-gray-100;
+}
+
+.recording-description {
+  @apply mt-4;
+}
+
+.recording-description label {
+  @apply block font-medium text-gray-700 mb-2;
+}
+
+.dark .recording-description label {
+  @apply text-gray-300;
+}
+
+.recording-description p {
+  @apply text-gray-600 text-sm leading-relaxed;
+}
+
+.dark .recording-description p {
+  @apply text-gray-400;
+}
+
+/* Recording Files */
+.recording-files h4 {
+  @apply text-lg font-semibold text-gray-900 mb-3;
+}
+
+.dark .recording-files h4 {
+  @apply text-gray-100;
+}
+
+.files-list {
+  @apply space-y-3;
+}
+
+.file-item {
+  @apply flex items-center justify-between p-3 bg-gray-50 rounded-lg;
+}
+
+.dark .file-item {
+  @apply bg-gray-700;
+}
+
+.file-info {
+  @apply flex-1;
+}
+
+.file-name {
+  @apply font-medium text-gray-900 text-sm;
+}
+
+.dark .file-name {
+  @apply text-gray-100;
+}
+
+.file-meta {
+  @apply flex items-center gap-2 mt-1 text-xs text-gray-600;
+}
+
+.dark .file-meta {
+  @apply text-gray-400;
+}
+
+.file-participant,
+.file-size,
+.file-format {
+  @apply bg-gray-200 px-2 py-1 rounded;
+}
+
+.dark .file-participant,
+.dark .file-size,
+.dark .file-format {
+  @apply bg-gray-600;
+}
+
+.file-actions {
+  @apply flex items-center gap-2 ml-3;
+}
+
+.download-btn {
+  @apply p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .download-btn {
+  @apply text-blue-400 hover:bg-blue-900/20;
+}
+
+.delete-file-btn {
+  @apply p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+.dark .delete-file-btn {
+  @apply text-red-400 hover:bg-red-900/20;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50;
+}
+
+.loading-content {
+  @apply bg-white rounded-lg p-6 text-center;
+}
+
+.dark .loading-content {
+  @apply bg-gray-800;
+}
+
+.loading-spinner {
+  @apply w-8 h-8 border-4 border-gray-300 border-t-blue-600 rounded-full
+    animate-spin mx-auto mb-4;
+}
+
+/* Delete Dialog */
+.delete-dialog {
+  @apply max-w-md;
+}
+
+.delete-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .delete-content {
+  @apply bg-gray-800;
+}
+
+.delete-header {
+  @apply bg-red-600 text-white px-6 py-4;
+}
+
+.delete-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.delete-body {
+  @apply px-6 py-4;
+}
+
+.delete-body p {
+  @apply text-gray-700 m-0;
+}
+
+.dark .delete-body p {
+  @apply text-gray-300;
+}
+
+.delete-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end gap-3;
+}
+
+.dark .delete-actions {
+  @apply bg-gray-700;
+}
+
+.cancel-btn {
+  @apply px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded
+    transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500;
+}
+
+.dark .cancel-btn {
+  @apply bg-gray-600 hover:bg-gray-500 text-gray-200;
+}
+
+.confirm-delete-btn {
+  @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded
+    disabled:opacity-50 disabled:cursor-not-allowed
+    transition-colors focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .archive-content {
+    @apply flex-col;
+  }
+  
+  .recording-sidebar {
+    @apply w-full;
+  }
+  
+  .recording-item {
+    @apply flex-col items-start gap-3;
+  }
+  
+  .recording-actions {
+    @apply ml-0 self-end;
+  }
+  
+  .summary-grid {
+    @apply grid-cols-1;
+  }
+}/* F
+eed Page Styles */
+
+.feed-page {
+  @apply min-h-screen bg-gray-50;
+}
+
+.dark .feed-page {
+  @apply bg-gray-900;
+}
+
+.feed-manager {
+  @apply relative;
+}
+
+.feed-container {
+  @apply max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8;
+}
+
+/* Feed Header */
+.feed-header {
+  @apply mb-8;
+}
+
+.feed-title h1 {
+  @apply text-3xl font-bold text-gray-900 mb-2;
+}
+
+.dark .feed-title h1 {
+  @apply text-gray-100;
+}
+
+.feed-subtitle {
+  @apply text-gray-600 text-lg mb-6;
+}
+
+.dark .feed-subtitle {
+  @apply text-gray-400;
+}
+
+.feed-actions {
+  @apply flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4;
+}
+
+/* RSS URL Section */
+.rss-info {
+  @apply flex-1;
+}
+
+.rss-label {
+  @apply block text-sm font-medium text-gray-700 mb-2;
+}
+
+.dark .rss-label {
+  @apply text-gray-300;
+}
+
+.rss-url-container {
+  @apply flex gap-2;
+}
+
+.rss-url-input {
+  @apply flex-1 px-3 py-2 border border-gray-300 rounded-lg
+    bg-gray-50 text-sm font-mono text-gray-700
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .rss-url-input {
+  @apply bg-gray-800 border-gray-600 text-gray-300
+    focus:ring-blue-400;
+}
+
+.copy-rss-btn {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg
+    transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500
+    whitespace-nowrap;
+}
+
+/* Upload Button */
+.upload-btn {
+  @apply px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg
+    transition-colors focus:outline-none focus:ring-2 focus:ring-green-500
+    flex items-center gap-2;
+}
+
+.upload-btn-secondary {
+  @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg
+    transition-colors focus:outline-none focus:ring-2 focus:ring-green-500
+    mt-4;
+}
+
+/* Feed Controls */
+.feed-controls {
+  @apply mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4;
+}
+
+.search-container {
+  @apply relative flex-1 max-w-md;
+}
+
+.search-input {
+  @apply w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900;
+}
+
+.dark .search-input {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.search-icon {
+  @apply absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400;
+}
+
+.sort-controls {
+  @apply flex items-center gap-2;
+}
+
+.sort-label {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.dark .sort-label {
+  @apply text-gray-300;
+}
+
+.sort-select {
+  @apply px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+}
+
+.dark .sort-select {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+/* Feed Items */
+.feed-items {
+  @apply space-y-4;
+}
+
+.feed-item {
+  @apply bg-white border border-gray-200 rounded-lg p-6
+    transition-all duration-200 hover:shadow-md;
+}
+
+.dark .feed-item {
+  @apply bg-gray-800 border-gray-700;
+}
+
+.feed-item {
+  @apply flex gap-4;
+}
+
+.item-artwork {
+  @apply flex-shrink-0;
+}
+
+.cover-image {
+  @apply w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover;
+}
+
+.cover-placeholder {
+  @apply w-20 h-20 md:w-24 md:h-24 rounded-lg bg-gray-200
+    flex items-center justify-center text-2xl;
+}
+
+.dark .cover-placeholder {
+  @apply bg-gray-700;
+}
+
+.item-info {
+  @apply flex-1 min-w-0;
+}
+
+.item-header {
+  @apply mb-3;
+}
+
+.item-title {
+  @apply text-xl font-semibold text-gray-900 mb-2;
+}
+
+.dark .item-title {
+  @apply text-gray-100;
+}
+
+.item-meta {
+  @apply flex flex-wrap items-center gap-4 text-sm text-gray-600;
+}
+
+.dark .item-meta {
+  @apply text-gray-400;
+}
+
+.item-date,
+.item-duration,
+.item-size,
+.item-format {
+  @apply flex items-center gap-1;
+}
+
+.item-format {
+  @apply bg-gray-100 px-2 py-1 rounded text-xs font-medium;
+}
+
+.dark .item-format {
+  @apply bg-gray-700;
+}
+
+.item-description {
+  @apply text-gray-700 text-sm leading-relaxed mb-3;
+}
+
+.dark .item-description {
+  @apply text-gray-300;
+}
+
+.item-metadata {
+  @apply flex flex-wrap gap-2 mb-3;
+}
+
+.metadata-tag {
+  @apply bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs;
+}
+
+.dark .metadata-tag {
+  @apply bg-blue-900/30 text-blue-300;
+}
+
+.item-uploader {
+  @apply flex items-center gap-2 text-sm;
+}
+
+.uploader-label {
+  @apply text-gray-600;
+}
+
+.dark .uploader-label {
+  @apply text-gray-400;
+}
+
+.uploader-name {
+  @apply font-medium text-gray-900;
+}
+
+.dark .uploader-name {
+  @apply text-gray-100;
+}
+
+.uploader-role {
+  @apply px-2 py-1 rounded text-xs font-medium;
+}
+
+.uploader-role.admin {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.dark .uploader-role.admin {
+  @apply bg-purple-900/30 text-purple-300;
+}
+
+.uploader-role.host {
+  @apply bg-green-100 text-green-800;
+}
+
+.dark .uploader-role.host {
+  @apply bg-green-900/30 text-green-300;
+}
+
+.item-actions {
+  @apply flex flex-col gap-2 ml-4;
+}
+
+.download-btn,
+.feed-link-btn {
+  @apply p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .download-btn,
+.dark .feed-link-btn {
+  @apply text-blue-400 hover:bg-blue-900/20;
+}
+
+.delete-btn {
+  @apply p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+.dark .delete-btn {
+  @apply text-red-400 hover:bg-red-900/20;
+}
+
+/* Empty State */
+.empty-state {
+  @apply text-center py-12;
+}
+
+.empty-icon {
+  @apply text-6xl mb-4;
+}
+
+.empty-state h3 {
+  @apply text-xl font-semibold text-gray-900 mb-2;
+}
+
+.dark .empty-state h3 {
+  @apply text-gray-100;
+}
+
+.empty-state p {
+  @apply text-gray-600 mb-4;
+}
+
+.dark .empty-state p {
+  @apply text-gray-400;
+}
+
+/* Pagination */
+.pagination {
+  @apply flex items-center justify-between mt-6 pt-4 border-t border-gray-200;
+}
+
+.dark .pagination {
+  @apply border-gray-700;
+}
+
+.pagination-btn {
+  @apply px-4 py-2 bg-white border border-gray-300 rounded-lg
+    hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .pagination-btn {
+  @apply bg-gray-800 border-gray-600 hover:bg-gray-700
+    focus:ring-blue-400;
+}
+
+.pagination-info {
+  @apply text-sm text-gray-600;
+}
+
+.dark .pagination-info {
+  @apply text-gray-400;
+}
+
+/* Upload Dialog Styles */
+.upload-dialog {
+  @apply max-w-2xl w-full;
+}
+
+.upload-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .upload-content {
+  @apply bg-gray-800;
+}
+
+.upload-header {
+  @apply bg-green-600 text-white px-6 py-4 flex items-center justify-between;
+}
+
+.upload-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.upload-form {
+  @apply flex flex-col h-full;
+}
+
+.upload-body {
+  @apply p-6 space-y-6 flex-1 overflow-y-auto max-h-96;
+}
+
+/* File Upload Section */
+.file-upload-section {
+  @apply space-y-2;
+}
+
+.file-drop-zone {
+  @apply border-2 border-dashed border-gray-300 rounded-lg p-8
+    cursor-pointer transition-colors hover:border-gray-400;
+}
+
+.dark .file-drop-zone {
+  @apply border-gray-600 hover:border-gray-500;
+}
+
+.file-drop-zone.drag-over {
+  @apply border-blue-500 bg-blue-50;
+}
+
+.dark .file-drop-zone.drag-over {
+  @apply border-blue-400 bg-blue-900/20;
+}
+
+.file-drop-zone.has-file {
+  @apply border-green-500 bg-green-50;
+}
+
+.dark .file-drop-zone.has-file {
+  @apply border-green-400 bg-green-900/20;
+}
+
+.file-input {
+  @apply hidden;
+}
+
+.file-prompt {
+  @apply text-center;
+}
+
+.upload-icon {
+  @apply text-4xl mb-4;
+}
+
+.file-prompt p {
+  @apply text-gray-600 mb-2;
+}
+
+.dark .file-prompt p {
+  @apply text-gray-400;
+}
+
+.file-types {
+  @apply text-sm text-gray-500;
+}
+
+.dark .file-types {
+  @apply text-gray-500;
+}
+
+.file-selected {
+  @apply flex items-center gap-4;
+}
+
+.file-icon {
+  @apply text-3xl;
+}
+
+.file-info {
+  @apply flex-1;
+}
+
+.file-name {
+  @apply font-medium text-gray-900;
+}
+
+.dark .file-name {
+  @apply text-gray-100;
+}
+
+.file-size {
+  @apply text-sm text-gray-600;
+}
+
+.dark .file-size {
+  @apply text-gray-400;
+}
+
+.file-error {
+  @apply text-red-600 text-sm mt-2;
+}
+
+.dark .file-error {
+  @apply text-red-400;
+}
+
+/* Episode Info Section */
+.episode-info-section {
+  @apply space-y-4;
+}
+
+.form-group {
+  @apply space-y-2;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+.form-input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900;
+}
+
+.dark .form-input {
+  @apply bg-gray-700 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.form-textarea {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900 resize-y;
+}
+
+.dark .form-textarea {
+  @apply bg-gray-700 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+/* Metadata Section */
+.metadata-section {
+  @apply space-y-4;
+}
+
+.metadata-section h4 {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.dark .metadata-section h4 {
+  @apply text-gray-100;
+}
+
+.form-row {
+  @apply grid grid-cols-1 md:grid-cols-2 gap-4;
+}
+
+/* Upload Actions */
+.upload-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end gap-3;
+}
+
+.dark .upload-actions {
+  @apply bg-gray-700;
+}
+
+.cancel-btn {
+  @apply px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded
+    transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500;
+}
+
+.dark .cancel-btn {
+  @apply bg-gray-600 hover:bg-gray-500 text-gray-200;
+}
+
+.upload-submit-btn {
+  @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded
+    disabled:opacity-50 disabled:cursor-not-allowed
+    transition-colors focus:outline-none focus:ring-2 focus:ring-green-500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .feed-item {
+    @apply flex-col;
+  }
+  
+  .item-actions {
+    @apply flex-row justify-end ml-0 mt-4;
+  }
+  
+  .rss-url-container {
+    @apply flex-col;
+  }
+  
+  .copy-rss-btn {
+    @apply w-full justify-center;
+  }
+  
+  .form-row {
+    @apply grid-cols-1;
+  }
+}/*
+ Crew Page Styles */
+
+.crew-page {
+  @apply min-h-screen bg-gray-50;
+}
+
+.dark .crew-page {
+  @apply bg-gray-900;
+}
+
+.crew-manager {
+  @apply relative;
+}
+
+.crew-container {
+  @apply max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8;
+}
+
+/* Crew Header */
+.crew-header {
+  @apply mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4;
+}
+
+.crew-title h1 {
+  @apply text-3xl font-bold text-gray-900 mb-2;
+}
+
+.dark .crew-title h1 {
+  @apply text-gray-100;
+}
+
+.crew-subtitle {
+  @apply text-gray-600 text-lg;
+}
+
+.dark .crew-subtitle {
+  @apply text-gray-400;
+}
+
+.crew-actions {
+  @apply flex flex-col sm:flex-row gap-3;
+}
+
+.invite-guest-btn,
+.create-host-btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-colors
+    focus:outline-none focus:ring-2 focus:ring-offset-2
+    flex items-center gap-2;
+}
+
+.invite-guest-btn {
+  @apply bg-blue-600 hover:bg-blue-700 text-white
+    focus:ring-blue-500;
+}
+
+.create-host-btn {
+  @apply bg-green-600 hover:bg-green-700 text-white
+    focus:ring-green-500;
+}
+
+.invite-guest-btn-secondary,
+.create-host-btn-secondary {
+  @apply px-4 py-2 rounded-lg font-medium transition-colors
+    focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.invite-guest-btn-secondary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white
+    focus:ring-blue-500;
+}
+
+.create-host-btn-secondary {
+  @apply bg-green-600 hover:bg-green-700 text-white
+    focus:ring-green-500;
+}
+
+/* Active Rooms Section */
+.active-rooms-section {
+  @apply mb-6 bg-white rounded-lg border border-gray-200 p-4;
+}
+
+.dark .active-rooms-section {
+  @apply bg-gray-800 border-gray-700;
+}
+
+.active-rooms-section h3 {
+  @apply text-lg font-semibold text-gray-900 mb-3;
+}
+
+.dark .active-rooms-section h3 {
+  @apply text-gray-100;
+}
+
+.active-rooms-list {
+  @apply space-y-2;
+}
+
+.active-room-item {
+  @apply flex items-center justify-between p-3 bg-gray-50 rounded-lg;
+}
+
+.dark .active-room-item {
+  @apply bg-gray-700;
+}
+
+.room-info {
+  @apply flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4;
+}
+
+.room-name {
+  @apply font-medium text-gray-900;
+}
+
+.dark .room-name {
+  @apply text-gray-100;
+}
+
+.room-host,
+.room-participants {
+  @apply text-sm text-gray-600;
+}
+
+.dark .room-host,
+.dark .room-participants {
+  @apply text-gray-400;
+}
+
+.room-time {
+  @apply text-sm text-gray-500;
+}
+
+.dark .room-time {
+  @apply text-gray-500;
+}
+
+/* Crew Controls */
+.crew-controls {
+  @apply mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4;
+}
+
+.search-container {
+  @apply relative flex-1 max-w-md;
+}
+
+.search-input {
+  @apply w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900;
+}
+
+.dark .search-input {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.search-icon {
+  @apply absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400;
+}
+
+.sort-controls {
+  @apply flex items-center gap-2;
+}
+
+.sort-label {
+  @apply text-sm font-medium text-gray-700;
+}
+
+.dark .sort-label {
+  @apply text-gray-300;
+}
+
+.sort-select {
+  @apply px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+}
+
+.dark .sort-select {
+  @apply bg-gray-800 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+/* Crew Table */
+.crew-table {
+  @apply bg-white rounded-lg border border-gray-200 overflow-hidden;
+}
+
+.dark .crew-table {
+  @apply bg-gray-800 border-gray-700;
+}
+
+.table-header {
+  @apply grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b border-gray-200
+    text-sm font-medium text-gray-700;
+}
+
+.dark .table-header {
+  @apply bg-gray-700 border-gray-600 text-gray-300;
+}
+
+.table-row {
+  @apply grid grid-cols-6 gap-4 p-4 border-b border-gray-200
+    hover:bg-gray-50 transition-colors;
+}
+
+.dark .table-row {
+  @apply border-gray-700 hover:bg-gray-700;
+}
+
+.table-row:last-child {
+  @apply border-b-0;
+}
+
+.table-cell {
+  @apply flex items-center;
+}
+
+.header-cell {
+  @apply font-medium;
+}
+
+/* Column Sizing */
+.name-col {
+  @apply col-span-2;
+}
+
+.email-col {
+  @apply col-span-2;
+}
+
+.role-col,
+.status-col,
+.activity-col,
+.actions-col {
+  @apply col-span-1;
+}
+
+/* Member Info */
+.member-info {
+  @apply flex flex-col;
+}
+
+.member-name {
+  @apply font-medium text-gray-900 flex items-center gap-2;
+}
+
+.dark .member-name {
+  @apply text-gray-100;
+}
+
+.you-badge {
+  @apply bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium;
+}
+
+.dark .you-badge {
+  @apply bg-blue-900/30 text-blue-300;
+}
+
+.current-room {
+  @apply text-sm text-gray-600 mt-1;
+}
+
+.dark .current-room {
+  @apply text-gray-400;
+}
+
+.member-email {
+  @apply text-gray-700 text-sm;
+}
+
+.dark .member-email {
+  @apply text-gray-300;
+}
+
+/* Role and Status Badges */
+.role-badge,
+.status-badge {
+  @apply px-2 py-1 rounded text-xs font-medium;
+}
+
+.role-admin {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.dark .role-admin {
+  @apply bg-purple-900/30 text-purple-300;
+}
+
+.role-host {
+  @apply bg-green-100 text-green-800;
+}
+
+.dark .role-host {
+  @apply bg-green-900/30 text-green-300;
+}
+
+.role-guest {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.dark .role-guest {
+  @apply bg-gray-700 text-gray-300;
+}
+
+.status-active {
+  @apply bg-green-100 text-green-800;
+}
+
+.dark .status-active {
+  @apply bg-green-900/30 text-green-300;
+}
+
+.status-pending {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.dark .status-pending {
+  @apply bg-yellow-900/30 text-yellow-300;
+}
+
+.status-revoked {
+  @apply bg-red-100 text-red-800;
+}
+
+.dark .status-revoked {
+  @apply bg-red-900/30 text-red-300;
+}
+
+.token-info {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+.dark .token-info {
+  @apply text-gray-500;
+}
+
+.last-active {
+  @apply text-sm text-gray-600;
+}
+
+.dark .last-active {
+  @apply text-gray-400;
+}
+
+/* Member Actions */
+.member-actions {
+  @apply flex items-center gap-2;
+}
+
+.revoke-btn {
+  @apply px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-800
+    rounded text-sm font-medium transition-colors
+    focus:outline-none focus:ring-2 focus:ring-yellow-500;
+}
+
+.dark .revoke-btn {
+  @apply bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-300;
+}
+
+.delete-btn {
+  @apply p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors
+    focus:outline-none focus:ring-2 focus:ring-red-500;
+}
+
+.dark .delete-btn {
+  @apply text-red-400 hover:bg-red-900/20;
+}
+
+/* Empty State */
+.empty-state {
+  @apply text-center py-12;
+}
+
+.empty-icon {
+  @apply text-6xl mb-4;
+}
+
+.empty-state h3 {
+  @apply text-xl font-semibold text-gray-900 mb-2;
+}
+
+.dark .empty-state h3 {
+  @apply text-gray-100;
+}
+
+.empty-state p {
+  @apply text-gray-600 mb-6;
+}
+
+.dark .empty-state p {
+  @apply text-gray-400;
+}
+
+.empty-actions {
+  @apply flex flex-col sm:flex-row gap-3 justify-center;
+}
+
+/* Pagination */
+.pagination {
+  @apply flex items-center justify-between mt-6 pt-4 border-t border-gray-200;
+}
+
+.dark .pagination {
+  @apply border-gray-700;
+}
+
+.pagination-btn {
+  @apply px-4 py-2 bg-white border border-gray-300 rounded-lg
+    hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+    focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.dark .pagination-btn {
+  @apply bg-gray-800 border-gray-600 hover:bg-gray-700
+    focus:ring-blue-400;
+}
+
+.pagination-info {
+  @apply text-sm text-gray-600;
+}
+
+.dark .pagination-info {
+  @apply text-gray-400;
+}
+
+/* Dialog Styles */
+
+/* Invite Guest Dialog */
+.invite-guest-dialog {
+  @apply max-w-lg w-full;
+}
+
+.invite-guest-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .invite-guest-content {
+  @apply bg-gray-800;
+}
+
+.invite-guest-header {
+  @apply bg-blue-600 text-white px-6 py-4 flex items-center justify-between;
+}
+
+.invite-guest-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.invite-guest-form {
+  @apply flex flex-col h-full;
+}
+
+.invite-guest-body {
+  @apply p-6 space-y-4;
+}
+
+.no-rooms-message {
+  @apply text-center py-8;
+}
+
+.no-rooms-icon {
+  @apply text-4xl mb-4;
+}
+
+.no-rooms-message h4 {
+  @apply text-lg font-semibold text-gray-900 mb-2;
+}
+
+.dark .no-rooms-message h4 {
+  @apply text-gray-100;
+}
+
+.no-rooms-message p {
+  @apply text-gray-600;
+}
+
+.dark .no-rooms-message p {
+  @apply text-gray-400;
+}
+
+.form-group {
+  @apply space-y-2;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+.form-input,
+.form-select {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900;
+}
+
+.dark .form-input,
+.dark .form-select {
+  @apply bg-gray-700 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.form-input.error {
+  @apply border-red-500 focus:ring-red-500 focus:border-red-500;
+}
+
+.field-error {
+  @apply text-red-600 text-sm mt-1;
+}
+
+.dark .field-error {
+  @apply text-red-400;
+}
+
+.field-help {
+  @apply text-gray-500 text-sm mt-1;
+}
+
+.dark .field-help {
+  @apply text-gray-500;
+}
+
+.invite-info {
+  @apply bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3;
+}
+
+.dark .invite-info {
+  @apply bg-blue-900/20 border-blue-800;
+}
+
+.info-icon {
+  @apply text-blue-600 text-lg flex-shrink-0;
+}
+
+.dark .info-icon {
+  @apply text-blue-400;
+}
+
+.info-text {
+  @apply text-sm text-blue-700 space-y-2;
+}
+
+.dark .info-text {
+  @apply text-blue-300;
+}
+
+.info-text p {
+  @apply m-0;
+}
+
+.invite-guest-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end gap-3;
+}
+
+.dark .invite-guest-actions {
+  @apply bg-gray-700;
+}
+
+.cancel-btn {
+  @apply px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded
+    transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500;
+}
+
+.dark .cancel-btn {
+  @apply bg-gray-600 hover:bg-gray-500 text-gray-200;
+}
+
+.invite-submit-btn {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded
+    disabled:opacity-50 disabled:cursor-not-allowed
+    transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+/* Create Host Dialog */
+.create-host-dialog {
+  @apply max-w-2xl w-full;
+}
+
+.create-host-content {
+  @apply bg-white rounded-lg overflow-hidden shadow-xl;
+}
+
+.dark .create-host-content {
+  @apply bg-gray-800;
+}
+
+.create-host-header {
+  @apply bg-green-600 text-white px-6 py-4 flex items-center justify-between;
+}
+
+.create-host-header h3 {
+  @apply text-lg font-semibold m-0;
+}
+
+.create-host-form {
+  @apply flex flex-col h-full;
+}
+
+.create-host-body {
+  @apply p-6 space-y-6 max-h-96 overflow-y-auto;
+}
+
+.permissions-section {
+  @apply space-y-4;
+}
+
+.permissions-section h4 {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.dark .permissions-section h4 {
+  @apply text-gray-100;
+}
+
+.permissions-grid {
+  @apply space-y-3;
+}
+
+.permission-item {
+  @apply flex items-start gap-3 p-3 border border-gray-200 rounded-lg
+    cursor-pointer hover:bg-gray-50 transition-colors;
+}
+
+.dark .permission-item {
+  @apply border-gray-600 hover:bg-gray-700;
+}
+
+.permission-checkbox {
+  @apply mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded
+    focus:ring-blue-500 focus:ring-2;
+}
+
+.dark .permission-checkbox {
+  @apply border-gray-600 bg-gray-700;
+}
+
+.permission-info {
+  @apply flex-1;
+}
+
+.permission-title {
+  @apply font-medium text-gray-900;
+}
+
+.dark .permission-title {
+  @apply text-gray-100;
+}
+
+.permission-description {
+  @apply text-sm text-gray-600 mt-1;
+}
+
+.dark .permission-description {
+  @apply text-gray-400;
+}
+
+.create-info {
+  @apply bg-green-50 border border-green-200 rounded-lg p-4 flex gap-3;
+}
+
+.dark .create-info {
+  @apply bg-green-900/20 border-green-800;
+}
+
+.create-info .info-icon {
+  @apply text-green-600;
+}
+
+.dark .create-info .info-icon {
+  @apply text-green-400;
+}
+
+.create-info .info-text {
+  @apply text-sm text-green-700;
+}
+
+.dark .create-info .info-text {
+  @apply text-green-300;
+}
+
+.create-host-actions {
+  @apply px-6 py-4 bg-gray-50 flex justify-end gap-3;
+}
+
+.dark .create-host-actions {
+  @apply bg-gray-700;
+}
+
+.create-submit-btn {
+  @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded
+    disabled:opacity-50 disabled:cursor-not-allowed
+    transition-colors focus:outline-none focus:ring-2 focus:ring-green-500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .crew-table {
+    @apply overflow-x-auto;
+  }
+  
+  .table-header,
+  .table-row {
+    @apply grid-cols-1 gap-2;
+  }
+  
+  .table-cell {
+    @apply flex-col items-start;
+  }
+  
+  .header-cell {
+    @apply hidden;
+  }
+  
+  .table-cell::before {
+    @apply font-medium text-gray-700 text-sm mb-1;
+  }
+  
+  .dark .table-cell::before {
+    @apply text-gray-300;
+  }
+  
+  .name-col::before {
+    content: "Name:";
+  }
+  
+  .email-col::before {
+    content: "Email:";
+  }
+  
+  .role-col::before {
+    content: "Role:";
+  }
+  
+  .status-col::before {
+    content: "Status:";
+  }
+  
+  .activity-col::before {
+    content: "Last Active:";
+  }
+  
+  .actions-col::before {
+    content: "Actions:";
+  }
+  
+  .member-actions {
+    @apply flex-col items-start gap-2;
+  }
+}/* Landin
+g Pages Styles */
+
+/* Common Landing Page Styles */
+.invite-page,
+.host-setup-page {
+  @apply min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4;
+}
+
+.dark .invite-page,
+.dark .host-setup-page {
+  @apply from-gray-900 to-gray-800;
+}
+
+/* Loading States */
+.invite-loading,
+.setup-loading {
+  @apply w-full max-w-md mx-auto;
+}
+
+.loading-container {
+  @apply bg-white rounded-lg shadow-xl p-8 text-center;
+}
+
+.dark .loading-container {
+  @apply bg-gray-800;
+}
+
+.loading-spinner {
+  @apply w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full
+    animate-spin mx-auto mb-6;
+}
+
+.loading-container h2 {
+  @apply text-xl font-semibold text-gray-900 mb-2;
+}
+
+.dark .loading-container h2 {
+  @apply text-gray-100;
+}
+
+.loading-container p {
+  @apply text-gray-600;
+}
+
+.dark .loading-container p {
+  @apply text-gray-400;
+}
+
+/* Error States */
+.invite-error,
+.setup-error,
+.invite-expired,
+.invite-inactive {
+  @apply w-full max-w-md mx-auto;
+}
+
+.error-container,
+.expired-container,
+.inactive-container {
+  @apply bg-white rounded-lg shadow-xl p-8 text-center;
+}
+
+.dark .error-container,
+.dark .expired-container,
+.dark .inactive-container {
+  @apply bg-gray-800;
+}
+
+.error-icon,
+.expired-icon,
+.inactive-icon {
+  @apply text-6xl mb-4;
+}
+
+.error-container h2,
+.expired-container h2,
+.inactive-container h2 {
+  @apply text-xl font-semibold text-gray-900 mb-4;
+}
+
+.dark .error-container h2,
+.dark .expired-container h2,
+.dark .inactive-container h2 {
+  @apply text-gray-100;
+}
+
+.error-container p,
+.expired-container p,
+.inactive-container p {
+  @apply text-gray-600 mb-6;
+}
+
+.dark .error-container p,
+.dark .expired-container p,
+.dark .inactive-container p {
+  @apply text-gray-400;
+}
+
+.expired-info,
+.inactive-info {
+  @apply bg-gray-50 rounded-lg p-4 mb-6 text-left;
+}
+
+.dark .expired-info,
+.dark .inactive-info {
+  @apply bg-gray-700;
+}
+
+.error-actions,
+.expired-actions,
+.inactive-actions {
+  @apply space-y-3;
+}
+
+.login-link {
+  @apply inline-block px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white
+    rounded-lg font-medium transition-colors
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+}
+
+.refresh-btn {
+  @apply px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white
+    rounded-lg font-medium transition-colors disabled:opacity-50
+    focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+}
+
+/* Invite Landing Page */
+.invite-valid {
+  @apply w-full max-w-2xl mx-auto;
+}
+
+.invite-container {
+  @apply bg-white rounded-lg shadow-xl overflow-hidden;
+}
+
+.dark .invite-container {
+  @apply bg-gray-800;
+}
+
+.invite-header {
+  @apply bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8 text-center;
+}
+
+.invite-icon {
+  @apply text-6xl mb-4;
+}
+
+.invite-header h1 {
+  @apply text-3xl font-bold mb-2;
+}
+
+.invite-subtitle {
+  @apply text-blue-100 text-lg;
+}
+
+.room-info {
+  @apply p-6 border-b border-gray-200;
+}
+
+.dark .room-info {
+  @apply border-gray-700;
+}
+
+.room-card {
+  @apply bg-gray-50 rounded-lg p-6;
+}
+
+.dark .room-card {
+  @apply bg-gray-700;
+}
+
+.room-card h2 {
+  @apply text-2xl font-semibold text-gray-900 mb-4;
+}
+
+.dark .room-card h2 {
+  @apply text-gray-100;
+}
+
+.room-details {
+  @apply space-y-3;
+}
+
+.detail-item {
+  @apply flex justify-between items-center;
+}
+
+.detail-label {
+  @apply font-medium text-gray-700;
+}
+
+.dark .detail-label {
+  @apply text-gray-300;
+}
+
+.detail-value {
+  @apply text-gray-900;
+}
+
+.dark .detail-value {
+  @apply text-gray-100;
+}
+
+.join-form {
+  @apply p-6 space-y-6;
+}
+
+.form-group {
+  @apply space-y-2;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700;
+}
+
+.dark .form-label {
+  @apply text-gray-300;
+}
+
+.form-input {
+  @apply w-full px-4 py-3 border border-gray-300 rounded-lg
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+    bg-white text-gray-900 text-lg;
+}
+
+.dark .form-input {
+  @apply bg-gray-700 border-gray-600 text-gray-100
+    focus:ring-blue-400 focus:border-blue-400;
+}
+
+.form-input.error {
+  @apply border-red-500 focus:ring-red-500 focus:border-red-500;
+}
+
+.field-error {
+  @apply text-red-600 text-sm;
+}
+
+.dark .field-error {
+  @apply text-red-400;
+}
+
+.field-help {
+  @apply text-gray-500 text-sm;
+}
+
+.dark .field-help {
+  @apply text-gray-500;
+}
+
+.join-actions {
+  @apply text-center;
+}
+
+.join-btn {
+  @apply w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white
+    rounded-lg font-semibold text-lg transition-colors
+    disabled:opacity-50 disabled:cursor-not-allowed
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+}
+
+.invite-info {
+  @apply p-6 bg-blue-50 border-t border-gray-200 flex gap-4;
+}
+
+.dark .invite-info {
+  @apply bg-blue-900/20 border-gray-700;
+}
+
+.info-icon {
+  @apply text-blue-600 text-xl flex-shrink-0;
+}
+
+.dark .info-icon {
+  @apply text-blue-400;
+}
+
+.info-text {
+  @apply text-sm text-blue-700 space-y-2;
+}
+
+.dark .info-text {
+  @apply text-blue-300;
+}
+
+.info-text p {
+  @apply m-0;
+}
+
+/* Host Setup Page */
+.setup-valid {
+  @apply w-full max-w-3xl mx-auto;
+}
+
+.setup-container {
+  @apply bg-white rounded-lg shadow-xl overflow-hidden;
+}
+
+.dark .setup-container {
+  @apply bg-gray-800;
+}
+
+.setup-header {
+  @apply bg-gradient-to-r from-green-600 to-emerald-600 text-white p-8 text-center;
+}
+
+.setup-icon {
+  @apply text-6xl mb-4;
+}
+
+.setup-header h1 {
+  @apply text-3xl font-bold mb-2;
+}
+
+.setup-subtitle {
+  @apply text-green-100 text-lg;
+}
+
+.setup-info {
+  @apply p-6 border-b border-gray-200;
+}
+
+.dark .setup-info {
+  @apply border-gray-700;
+}
+
+.info-card {
+  @apply bg-gray-50 rounded-lg p-6;
+}
+
+.dark .info-card {
+  @apply bg-gray-700;
+}
+
+.info-card h3 {
+  @apply text-xl font-semibold text-gray-900 mb-4;
+}
+
+.dark .info-card h3 {
+  @apply text-gray-100;
+}
+
+.info-details {
+  @apply space-y-3 mb-6;
+}
+
+.role-host {
+  @apply bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-medium;
+}
+
+.dark .role-host {
+  @apply bg-green-900/30 text-green-300;
+}
+
+.permissions-info h4 {
+  @apply text-lg font-semibold text-gray-900 mb-3;
+}
+
+.dark .permissions-info h4 {
+  @apply text-gray-100;
+}
+
+.permissions-list {
+  @apply space-y-2;
+}
+
+.permission-item {
+  @apply flex items-center gap-3 text-gray-700;
+}
+
+.dark .permission-item {
+  @apply text-gray-300;
+}
+
+.permission-icon {
+  @apply text-green-600;
+}
+
+.dark .permission-icon {
+  @apply text-green-400;
+}
+
+.setup-form {
+  @apply p-6 space-y-6;
+}
+
+.setup-actions {
+  @apply text-center pt-4;
+}
+
+.setup-btn {
+  @apply w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white
+    rounded-lg font-semibold text-lg transition-colors
+    disabled:opacity-50 disabled:cursor-not-allowed
+    focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2;
+}
+
+.setup-footer {
+  @apply p-6 bg-gray-50 border-t border-gray-200;
+}
+
+.dark .setup-footer {
+  @apply bg-gray-700 border-gray-600;
+}
+
+.footer-info p {
+  @apply text-sm text-gray-600 text-center;
+}
+
+.dark .footer-info p {
+  @apply text-gray-400;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .invite-page,
+  .host-setup-page {
+    @apply p-2;
+  }
+  
+  .invite-header,
+  .setup-header {
+    @apply p-6;
+  }
+  
+  .invite-header h1,
+  .setup-header h1 {
+    @apply text-2xl;
+  }
+  
+  .invite-subtitle,
+  .setup-subtitle {
+    @apply text-base;
+  }
+  
+  .room-info,
+  .setup-info,
+  .join-form,
+  .setup-form {
+    @apply p-4;
+  }
+  
+  .room-card,
+  .info-card {
+    @apply p-4;
+  }
+  
+  .detail-item {
+    @apply flex-col items-start gap-1;
+  }
+  
+  .form-input {
+    @apply text-base py-2;
+  }
+  
+  .join-btn,
+  .setup-btn {
+    @apply text-base py-2;
+  }
+}
