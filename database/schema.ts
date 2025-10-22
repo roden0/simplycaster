@@ -18,9 +18,8 @@ import {
   uniqueIndex,
   index,
   check,
-  sql,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ============================================================================
 // ENUMS
@@ -113,6 +112,68 @@ export const users = pgTable(
       sql`(${table.passwordHash} IS NULL AND ${table.passwordSalt} IS NULL) OR 
            (${table.passwordHash} IS NOT NULL AND ${table.passwordSalt} IS NOT NULL)`
     ),
+  })
+);
+
+// ============================================================================
+// BETTER AUTH TABLES
+// ============================================================================
+
+export const sessions = pgTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    token: text("token").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+  },
+  (table) => ({
+    tokenIdx: index("idx_session_token").on(table.token),
+    userIdx: index("idx_session_user").on(table.userId),
+    expiresIdx: index("idx_session_expires").on(table.expiresAt),
+  })
+);
+
+export const accounts = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+      withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+      withTimezone: true,
+    }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("idx_account_user").on(table.userId),
+    providerIdx: index("idx_account_provider").on(table.providerId, table.accountId),
   })
 );
 
@@ -552,6 +613,8 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   invitedGuests: many(guests, { relationName: "inviter" }),
   kickedGuests: many(guests, { relationName: "kicker" }),
   auditLogs: many(auditLog),
+  sessions: many(sessions),
+  accounts: many(accounts),
   createdBy: one(users, {
     fields: [users.createdBy],
     references: [users.id],
@@ -635,6 +698,20 @@ export const auditLogRelations = relations(auditLog, ({ one }) => ({
   }),
 }));
 
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const accountsRelations = relations(accounts, ({ one }) => ({
+  user: one(users, {
+    fields: [accounts.userId],
+    references: [users.id],
+  }),
+}));
+
 // ============================================================================
 // TIPOS INFERIDOS
 // ============================================================================
@@ -665,3 +742,9 @@ export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
+
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;

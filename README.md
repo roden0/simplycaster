@@ -13,6 +13,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 
 ### Technical Features
 - **Clean Architecture**: Service layer with dependency injection and use cases
+- **Better Auth Integration**: Modern authentication system with session management and security features
 - **Server-Side Rendering (SSR)**: Optimal performance with Fresh framework
 - **Islands Architecture**: Interactive components hydrated only where needed
 - **Dark/Light Theme**: System preference detection with localStorage persistence
@@ -103,6 +104,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 │   └── ...                # Page routes
 ├── lib/                   # Core business logic
 │   ├── application/       # Use cases (application layer)
+│   ├── auth/             # Better Auth configuration and types
 │   ├── domain/           # Domain entities and interfaces
 │   ├── infrastructure/   # Repository implementations
 │   ├── container/        # Dependency injection
@@ -122,11 +124,21 @@ SimplyCaster follows **Clean Architecture** principles:
 - **Infrastructure Layer**: Database, external services, and technical implementations
 - **Presentation Layer**: Routes, components, and user interface
 
+### Authentication & Security
+
+SimplyCaster uses **Better Auth** for modern, secure authentication:
+
+- **Better Auth Integration**: Comprehensive authentication system with session management
+- **Email & Password**: Secure password-based authentication with proper hashing
+- **Session Management**: Automatic session handling with configurable expiration
+- **Role-Based Access**: Admin, Host, and Guest roles with granular permissions
+- **Security Features**: Rate limiting, account lockout, and audit logging
+
 ### API Documentation
 
 The API follows RESTful conventions with consistent error handling:
 
-- **Authentication**: JWT-based with HTTP-only cookies
+- **Authentication**: Better Auth with secure session management
 - **Authorization**: Role-based access control
 - **Error Handling**: Standardized error responses
 - **Documentation**: Available at `/api/README.md`
@@ -234,6 +246,7 @@ SimplyCaster is designed for self-hosted deployment:
 SimplyCaster uses PostgreSQL with the following features:
 - **Row-Level Security (RLS)** for data isolation
 - **UUID v7** for primary keys
+- **Better Auth Tables** for session and account management
 - **Audit logging** for security tracking
 - **Soft deletes** for data retention
 
@@ -263,7 +276,8 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ## 🙏 Acknowledgments
 
-- Built with [Fresh](https://fresh.deno.dev/) - The next-gen web framework
+[![Made with Fresh](https://fresh.deno.dev/fresh-badge.svg)](https://fresh.deno.dev)
+
 - Powered by [Deno](https://deno.land/) - A modern runtime for JavaScript and TypeScript
 - Database management with [Drizzle ORM](https://orm.drizzle.team/)
 - UI components styled with [Tailwind CSS](https://tailwindcss.com/)
