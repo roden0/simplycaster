@@ -345,6 +345,57 @@ export class DrizzleUserRepository implements UserRepository {
   }
 
   /**
+   * Find active users ordered by recent activity for cache warming
+   */
+  async findActiveUsers(params?: PaginationParams): Promise<Result<PaginatedResult<User>>> {
+    try {
+      const { page = 1, limit = 10 } = params || {};
+      const offset = (page - 1) * limit;
+
+      // Get total count of active users
+      const totalResult = await this.db
+        .select({ count: count() })
+        .from(users)
+        .where(and(
+          eq(users.isActive, true),
+          eq(users.emailVerified, true),
+          isNull(users.deletedAt)
+        ));
+
+      const total = totalResult[0]?.count || 0;
+
+      // Get active users ordered by last login (most recent first), then by creation date
+      const result = await this.db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.isActive, true),
+          eq(users.emailVerified, true),
+          isNull(users.deletedAt)
+        ))
+        .orderBy(
+          desc(users.lastLoginAt),
+          desc(users.createdAt)
+        )
+        .limit(limit)
+        .offset(offset);
+
+      const items = result.map(row => this.mapToEntity(row));
+      const totalPages = Math.ceil(total / limit);
+
+      return Ok({
+        items,
+        total,
+        page,
+        limit,
+        totalPages
+      });
+    } catch (error) {
+      return Err(new Error(`Failed to find active users: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
+  /**
    * Map database row to domain entity
    */
   private mapToEntity(row: any): User {

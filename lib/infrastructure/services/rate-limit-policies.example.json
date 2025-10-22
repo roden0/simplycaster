@@ -1,0 +1,106 @@
+{
+  "rateLimitPolicies": [
+    {
+      "endpoint": "/api/auth/login",
+      "defaultLimit": 5,
+      "defaultWindow": 900,
+      "roleOverrides": {
+        "admin": {
+          "limit": 20,
+          "window": 900
+        }
+      },
+      "skipForAdmin": false
+    },
+    {
+      "endpoint": "/api/auth/register",
+      "defaultLimit": 3,
+      "defaultWindow": 3600,
+      "skipForAdmin": true
+    },
+    {
+      "endpoint": "/api/rooms/create",
+      "defaultLimit": 10,
+      "defaultWindow": 3600,
+      "roleOverrides": {
+        "host": {
+          "limit": 20,
+          "window": 3600
+        },
+        "admin": {
+          "limit": 100,
+          "window": 3600
+        }
+      },
+      "skipForAdmin": true
+    },
+    {
+      "endpoint": "/api/rooms/list",
+      "defaultLimit": 60,
+      "defaultWindow": 3600,
+      "roleOverrides": {
+        "host": {
+          "limit": 120,
+          "window": 3600
+        },
+        "admin": {
+          "limit": 300,
+          "window": 3600
+        }
+      },
+      "skipForAdmin": true
+    },
+    {
+      "endpoint": "/api/rooms/*/invite-guest",
+      "defaultLimit": 20,
+      "defaultWindow": 3600,
+      "roleOverrides": {
+        "host": {
+          "limit": 50,
+          "window": 3600
+        }
+      },
+      "skipForAdmin": true
+    },
+    {
+      "endpoint": "/api/rooms/*/start-recording",
+      "defaultLimit": 5,
+      "defaultWindow": 300,
+      "roleOverrides": {
+        "host": {
+          "limit": 10,
+          "window": 300
+        }
+      },
+      "skipForAdmin": true
+    },
+    {
+      "endpoint": "/api/feed/upload",
+      "defaultLimit": 5,
+      "defaultWindow": 3600,
+      "roleOverrides": {
+        "admin": {
+          "limit": 20,
+          "window": 3600
+        }
+      },
+      "skipForAdmin": false
+    },
+    {
+      "endpoint": "/api/*",
+      "defaultLimit": 1000,
+      "defaultWindow": 3600,
+      "roleOverrides": {
+        "host": {
+          "limit": 2000,
+          "window": 3600
+        },
+        "admin": {
+          "limit": 5000,
+          "window": 3600
+        }
+      },
+      "skipForAdmin": true
+    }
+  ]
+}

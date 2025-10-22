@@ -1,13 +1,13 @@
 /**
- * Start Recording Route
+ * Stop Recording Route
  * 
- * Handles recording start using StartRecordingUseCase
+ * Handles recording stop using StopRecordingUseCase
  */
 
 import { define } from "../../../../utils.ts";
 import { getService } from "../../../../lib/container/global.ts";
 import { ServiceKeys } from "../../../../lib/container/registry.ts";
-import { StartRecordingUseCase, type StartRecordingInput } from "../../../../lib/application/use-cases/room/index.ts";
+import { StopRecordingUseCase, type StopRecordingInput } from "../../../../lib/application/use-cases/room/index.ts";
 import { CachedRoomService } from "../../../../lib/infrastructure/services/cached-room-service.ts";
 import { CachedRecordingService } from "../../../../lib/infrastructure/services/cached-recording-service.ts";
 import { ValidationError, EntityNotFoundError, BusinessRuleError, ConflictError } from "../../../../lib/domain/errors/index.ts";
@@ -33,23 +33,29 @@ export const handler = define.handlers({
         );
       }
 
-      // Parse request body
-      const body = await req.json();
+      // Parse request body (optional recording ID)
+      let body = {};
+      try {
+        body = await req.json();
+      } catch {
+        // Body is optional for stop recording
+        body = {};
+      }
       
       // Use authenticated user as host
-      const input: StartRecordingInput = {
+      const input: StopRecordingInput = {
         roomId: roomId,
         hostId: user.id,
-        participantCount: body.participantCount
+        recordingId: body.recordingId
       };
 
-      // Get start recording use case from container
-      const startRecordingUseCase = getService<StartRecordingUseCase>(
-        ServiceKeys.START_RECORDING_USE_CASE
+      // Get stop recording use case from container
+      const stopRecordingUseCase = getService<StopRecordingUseCase>(
+        ServiceKeys.STOP_RECORDING_USE_CASE
       );
 
-      // Execute recording start
-      const result = await startRecordingUseCase.execute(input);
+      // Execute recording stop
+      const result = await stopRecordingUseCase.execute(input);
 
       if (!result.success) {
         // Handle different error types
@@ -117,7 +123,7 @@ export const handler = define.handlers({
         return new Response(
           JSON.stringify({
             success: false,
-            error: "Failed to start recording",
+            error: "Failed to stop recording",
             code: "INTERNAL_ERROR"
           }),
           {
@@ -128,9 +134,9 @@ export const handler = define.handlers({
       }
 
       // Success response
-      const { recording, room, storageInfo, message } = result.data;
+      const { recording, room, message } = result.data;
       
-      // Warm cache with updated room and recording data
+      // Update cache with final recording and room data
       try {
         const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
         const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
@@ -138,10 +144,12 @@ export const handler = define.handlers({
         // Update room status in cache
         await cachedRoomService.updateRoomStatus(roomId, room.status);
         
-        // The recording should already be cached by the use case, but ensure it's there
-        // Cache warming is handled by the cached services automatically
+        // Invalidate recording stats cache since we have a new completed recording
+        await cachedRecordingService.invalidateRecordingStats(recording.createdBy);
+        
+        // The recording should already be cached by the use case with updated data
       } catch (cacheError) {
-        console.error("Error updating cache after recording start:", cacheError);
+        console.error("Error updating cache after recording stop:", cacheError);
         // Don't fail the request if cache update fails
       }
       
@@ -156,15 +164,17 @@ export const handler = define.handlers({
               status: recording.status,
               participantCount: recording.participantCount,
               startedAt: recording.startedAt,
+              stoppedAt: recording.stoppedAt,
+              durationSeconds: recording.durationSeconds,
               createdBy: recording.createdBy
             },
             room: {
               id: room.id,
               name: room.name,
               status: room.status,
-              recordingStartedAt: room.recordingStartedAt
+              recordingStartedAt: room.recordingStartedAt,
+              recordingStoppedAt: room.recordingStoppedAt
             },
-            storageInfo,
             message
           }
         }),
@@ -175,7 +185,7 @@ export const handler = define.handlers({
       );
 
     } catch (error) {
-      console.error("Start recording route error:", error);
+      console.error("Stop recording route error:", error);
       
       return new Response(
         JSON.stringify({

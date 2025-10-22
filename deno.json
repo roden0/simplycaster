@@ -42,6 +42,7 @@
     "pg": "npm:pg@^8.16.3",
     "postgres": "npm:postgres@^3.4.4",
     "better-auth": "npm:better-auth@^1.1.1",
+    "redis": "npm:redis@^4.7.0",
 
     "preact": "npm:preact@^10.27.2",
     "@preact/signals": "npm:@preact/signals@^2.3.1",

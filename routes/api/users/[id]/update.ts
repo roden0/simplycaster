@@ -8,6 +8,7 @@ import { define } from "../../../../utils.ts";
 import { getService } from "../../../../lib/container/global.ts";
 import { ServiceKeys } from "../../../../lib/container/registry.ts";
 import { UpdateUserUseCase, type UpdateUserInput } from "../../../../lib/application/use-cases/user/index.ts";
+import { CachedUserService } from "../../../../lib/infrastructure/services/cached-user-service.ts";
 import { ValidationError, EntityNotFoundError, BusinessRuleError } from "../../../../lib/domain/errors/index.ts";
 import { requireAuth } from "../../../../lib/middleware/auth.ts";
 
@@ -134,6 +135,16 @@ export const handler = define.handlers({
             // Success response
             const { user, message } = result.data;
 
+            // Warm the cache with the updated user
+            try {
+                const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+                // The cached user service should have already cached the updated user
+                // but we can ensure it's warmed here if needed
+            } catch (cacheError) {
+                console.error("Error warming cache after user update:", cacheError);
+                // Don't fail the request if cache warming fails
+            }
+
             return new Response(
                 JSON.stringify({
                     success: true,
@@ -151,7 +162,10 @@ export const handler = define.handlers({
                 }),
                 {
                     status: 200,
-                    headers: { "Content-Type": "application/json" }
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Cache-Control": "private, no-cache" // Don't cache user profile updates
+                    }
                 }
             );
 

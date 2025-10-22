@@ -9,6 +9,7 @@ import { RoomRepository } from '../../../domain/repositories/room-repository.ts'
 import { RecordingRepository } from '../../../domain/repositories/recording-repository.ts';
 import { UserRepository } from '../../../domain/repositories/user-repository.ts';
 import { StorageService } from '../../../domain/services/storage-service.ts';
+import { RealtimeService } from '../../../domain/services/realtime-service.ts';
 import { Room, RoomDomain } from '../../../domain/entities/room.ts';
 import { Recording, CreateRecordingData, RecordingDomain } from '../../../domain/entities/recording.ts';
 import { RoomStatus, RecordingStatus, UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
@@ -44,7 +45,8 @@ export class StartRecordingUseCase {
     private roomRepository: RoomRepository,
     private recordingRepository: RecordingRepository,
     private userRepository: UserRepository,
-    private storageService: StorageService
+    private storageService: StorageService,
+    private realtimeService?: RealtimeService
   ) {}
 
   /**
@@ -131,7 +133,20 @@ export class StartRecordingUseCase {
         return Err(roomUpdateResult.error);
       }
 
-      // 11. Prepare success response
+      // 11. Broadcast recording started event
+      if (this.realtimeService) {
+        try {
+          await this.realtimeService.broadcastRecordingStarted(
+            input.roomId,
+            createRecordingResult.data.id
+          );
+        } catch (error) {
+          console.error('Failed to broadcast recording started event:', error);
+          // Don't fail the entire operation for broadcast errors
+        }
+      }
+
+      // 12. Prepare success response
       const output: StartRecordingOutput = {
         recording: createRecordingResult.data,
         room: roomUpdateResult.data,

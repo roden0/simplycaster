@@ -1,102 +1,198 @@
 // ============================================================================
 // SimplyCaster Database Services
-// High-level database operations for the application
+// High-level database operations for the application with Redis caching
 // ============================================================================
 
 import { db, users, rooms, recordings, feedEpisodes, guests, auditLog } from "./connection.ts";
 import { eq, desc, and, isNull, sql } from "drizzle-orm";
 import type { User, Room, Recording, FeedEpisode, Guest, AuditLog } from "./schema.ts";
+import { getService } from "../lib/container/global.ts";
+import { ServiceKeys } from "../lib/container/registry.ts";
+import { CachedUserService } from "../lib/infrastructure/services/cached-user-service.ts";
+import { CachedRoomService } from "../lib/infrastructure/services/cached-room-service.ts";
+import { CachedRecordingService } from "../lib/infrastructure/services/cached-recording-service.ts";
+import { CacheWarmingService } from "../lib/infrastructure/services/cache-warming-service.ts";
 
 // ============================================================================
-// USER SERVICES
+// USER SERVICES (with caching)
 // ============================================================================
 
 export async function getUserById(id: string): Promise<User | null> {
-  const result = await db
-    .select()
-    .from(users)
-    .where(and(eq(users.id, id), isNull(users.deletedAt)))
-    .limit(1);
-  
-  return result[0] || null;
+  try {
+    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    return await cachedUserService.getUserById(id);
+  } catch (error) {
+    console.error("Error getting user from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    const result = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, id), isNull(users.deletedAt)))
+      .limit(1);
+    
+    return result[0] || null;
+  }
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const result = await db
-    .select()
-    .from(users)
-    .where(and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)))
-    .limit(1);
-  
-  return result[0] || null;
+  try {
+    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    return await cachedUserService.getUserByEmail(email);
+  } catch (error) {
+    console.error("Error getting user by email from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    const result = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)))
+      .limit(1);
+    
+    return result[0] || null;
+  }
 }
 
 export async function getAllUsers(): Promise<User[]> {
-  return await db
-    .select()
-    .from(users)
-    .where(isNull(users.deletedAt))
-    .orderBy(users.createdAt);
+  try {
+    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    return await cachedUserService.getAllUsers();
+  } catch (error) {
+    console.error("Error getting all users from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    return await db
+      .select()
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .orderBy(users.createdAt);
+  }
 }
 
 // ============================================================================
-// ROOM SERVICES
+// ROOM SERVICES (with caching)
 // ============================================================================
 
 export async function getRoomById(id: string): Promise<Room | null> {
-  const result = await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.id, id), isNull(rooms.closedAt)))
-    .limit(1);
-  
-  return result[0] || null;
+  try {
+    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    return await cachedRoomService.getRoomById(id);
+  } catch (error) {
+    console.error("Error getting room from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    const result = await db
+      .select()
+      .from(rooms)
+      .where(and(eq(rooms.id, id), isNull(rooms.closedAt)))
+      .limit(1);
+    
+    return result[0] || null;
+  }
 }
 
 export async function getActiveRooms(): Promise<Room[]> {
-  return await db
-    .select()
-    .from(rooms)
-    .where(isNull(rooms.closedAt))
-    .orderBy(desc(rooms.createdAt));
+  try {
+    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    return await cachedRoomService.getActiveRooms();
+  } catch (error) {
+    console.error("Error getting active rooms from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    return await db
+      .select()
+      .from(rooms)
+      .where(isNull(rooms.closedAt))
+      .orderBy(desc(rooms.createdAt));
+  }
 }
 
 export async function getRoomsByHostId(hostId: string): Promise<Room[]> {
-  return await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.hostId, hostId), isNull(rooms.closedAt)))
-    .orderBy(desc(rooms.createdAt));
+  try {
+    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    return await cachedRoomService.getRoomsByHostId(hostId);
+  } catch (error) {
+    console.error("Error getting rooms by host from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    return await db
+      .select()
+      .from(rooms)
+      .where(and(eq(rooms.hostId, hostId), isNull(rooms.closedAt)))
+      .orderBy(desc(rooms.createdAt));
+  }
 }
 
 // ============================================================================
-// RECORDING SERVICES
+// RECORDING SERVICES (with caching)
 // ============================================================================
 
 export async function getRecordingById(id: string): Promise<Recording | null> {
-  const result = await db
-    .select()
-    .from(recordings)
-    .where(and(eq(recordings.id, id), isNull(recordings.deletedAt)))
-    .limit(1);
-  
-  return result[0] || null;
+  try {
+    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    return await cachedRecordingService.getRecordingById(id);
+  } catch (error) {
+    console.error("Error getting recording from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    const result = await db
+      .select()
+      .from(recordings)
+      .where(and(eq(recordings.id, id), isNull(recordings.deletedAt)))
+      .limit(1);
+    
+    return result[0] || null;
+  }
 }
 
 export async function getRecordingsByUserId(userId: string): Promise<Recording[]> {
-  return await db
-    .select()
-    .from(recordings)
-    .where(and(eq(recordings.createdBy, userId), isNull(recordings.deletedAt)))
-    .orderBy(desc(recordings.startedAt));
+  try {
+    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    return await cachedRecordingService.getRecordingsByCreator(userId);
+  } catch (error) {
+    console.error("Error getting recordings by user from cached service, falling back to direct DB:", error);
+    // Fallback to direct database query
+    return await db
+      .select()
+      .from(recordings)
+      .where(and(eq(recordings.createdBy, userId), isNull(recordings.deletedAt)))
+      .orderBy(desc(recordings.startedAt));
+  }
 }
 
 export async function getAllRecordings(): Promise<Recording[]> {
-  return await db
-    .select()
-    .from(recordings)
-    .where(isNull(recordings.deletedAt))
-    .orderBy(desc(recordings.startedAt));
+  try {
+    // For admin operations, we don't cache all recordings due to potential size
+    // Fall back to direct database query
+    return await db
+      .select()
+      .from(recordings)
+      .where(isNull(recordings.deletedAt))
+      .orderBy(desc(recordings.startedAt));
+  } catch (error) {
+    console.error("Error getting all recordings:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get recording statistics for a user (cached)
+ */
+export async function getRecordingStats(userId: string): Promise<{
+  totalRecordings: number;
+  totalDuration: number;
+  totalSize: number;
+}> {
+  try {
+    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    return await cachedRecordingService.getRecordingStats(userId);
+  } catch (error) {
+    console.error("Error getting recording stats from cached service, falling back to calculation:", error);
+    // Fallback to direct calculation
+    const recordings = await db
+      .select()
+      .from(recordings)
+      .where(and(eq(recordings.createdBy, userId), isNull(recordings.deletedAt)));
+    
+    return {
+      totalRecordings: recordings.length,
+      totalDuration: recordings.reduce((sum, r) => sum + (r.durationSeconds || 0), 0),
+      totalSize: recordings.reduce((sum, r) => sum + (r.totalSizeBytes || 0), 0)
+    };
+  }
 }
 
 // ============================================================================
@@ -221,6 +317,99 @@ export async function getRecentAuditLogs(limit = 100): Promise<AuditLog[]> {
     .from(auditLog)
     .orderBy(desc(auditLog.createdAt))
     .limit(limit);
+}
+
+// ============================================================================
+// CACHE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/**
+ * Invalidate user cache after data modifications
+ */
+export async function invalidateUserCache(userId: string): Promise<void> {
+  try {
+    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    await cachedUserService.invalidateAllUserCache();
+  } catch (error) {
+    console.error("Error invalidating user cache:", error);
+  }
+}
+
+/**
+ * Invalidate room cache after data modifications
+ */
+export async function invalidateRoomCache(roomId: string, hostId?: string): Promise<void> {
+  try {
+    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    await cachedRoomService.invalidateAllRoomCache();
+  } catch (error) {
+    console.error("Error invalidating room cache:", error);
+  }
+}
+
+/**
+ * Invalidate recording cache after data modifications
+ */
+export async function invalidateRecordingCache(recordingId: string, createdBy?: string): Promise<void> {
+  try {
+    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    await cachedRecordingService.invalidateAllRecordingCache();
+    
+    if (createdBy) {
+      await cachedRecordingService.invalidateRecordingStats(createdBy);
+    }
+  } catch (error) {
+    console.error("Error invalidating recording cache:", error);
+  }
+}
+
+/**
+ * Warm cache with frequently accessed data using the cache warming service
+ */
+export async function warmCache(): Promise<void> {
+  try {
+    console.log("Starting cache warming...");
+    
+    // Get cache warming service
+    const cacheWarmingService = getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
+    
+    // Trigger manual cache warming
+    await cacheWarmingService.triggerManualWarming();
+    
+    console.log("Cache warming completed successfully");
+  } catch (error) {
+    console.error("Error during cache warming:", error);
+    
+    // Fallback to basic cache warming if service fails
+    try {
+      console.log("Attempting fallback cache warming...");
+      
+      const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+      const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+      const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+      
+      // Basic cache warming
+      await cachedRoomService.warmRoomListCache();
+      
+      // Get active users and warm their caches
+      const activeUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.isActive, true), isNull(users.deletedAt)))
+        .limit(20); // Smaller limit for fallback
+      
+      const userIds = activeUsers.map(u => u.id);
+      
+      if (userIds.length > 0) {
+        await cachedUserService.warmUserCache(userIds);
+        await cachedRecordingService.warmRecordingListCache(userIds);
+      }
+      
+      console.log("Fallback cache warming completed");
+    } catch (fallbackError) {
+      console.error("Fallback cache warming also failed:", fallbackError);
+    }
+  }
 }
 
 // ============================================================================

@@ -30,6 +30,11 @@ export interface UserRepository {
   findActive(params?: PaginationParams): Promise<Result<PaginatedResult<User>>>;
 
   /**
+   * Find active users ordered by recent activity for cache warming
+   */
+  findActiveUsers(params?: PaginationParams): Promise<Result<PaginatedResult<User>>>;
+
+  /**
    * Create a new user
    */
   create(data: CreateUserData): Promise<Result<User>>;

@@ -8,6 +8,7 @@ import { getService } from "../container/global.ts";
 import { ServiceKeys } from "../container/registry.ts";
 import { TokenService } from "../domain/services/token-service.ts";
 import { UserRepository } from "../domain/repositories/user-repository.ts";
+import { SessionService } from "../domain/services/session-service.ts";
 
 export interface AuthenticatedUser {
   id: string;
@@ -19,26 +20,63 @@ export interface AuthenticatedUser {
 
 /**
  * Extract and verify authentication token from request
+ * First tries Redis session validation, then falls back to JWT validation
  */
 export async function authenticateRequest(req: Request): Promise<AuthenticatedUser | null> {
   try {
-    // Try to get token from Authorization header first
-    let token = req.headers.get("Authorization");
-    if (token && token.startsWith("Bearer ")) {
-      token = token.substring(7);
-    } else {
-      // Try to get token from cookie
-      const cookieHeader = req.headers.get("Cookie");
-      if (cookieHeader) {
-        const cookies = parseCookies(cookieHeader);
-        token = cookies.auth_token;
+    // Try to get session ID from cookie first (Redis sessions)
+    const cookieHeader = req.headers.get("Cookie");
+    let sessionId: string | undefined;
+    let token: string | undefined;
+
+    if (cookieHeader) {
+      const cookies = parseCookies(cookieHeader);
+      sessionId = cookies.session_id;
+      token = cookies.auth_token;
+    }
+
+    // Try to get token from Authorization header if not in cookie
+    if (!token) {
+      const authHeader = req.headers.get("Authorization");
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
       }
     }
 
-    if (!token) {
-      return null;
+    // First, try Redis session validation if session ID is available
+    if (sessionId) {
+      const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+      const sessionResult = await sessionService.validateSession(sessionId);
+
+      if (sessionResult.success && sessionResult.data) {
+        return {
+          id: sessionResult.data.userId,
+          email: sessionResult.data.email,
+          role: sessionResult.data.role,
+          isActive: sessionResult.data.isActive,
+          emailVerified: sessionResult.data.emailVerified
+        };
+      }
     }
 
+    // Fallback to JWT token validation if Redis session is not available or invalid
+    if (token) {
+      return await authenticateWithJWT(token);
+    }
+
+    return null;
+
+  } catch (error) {
+    console.error("Authentication error:", error);
+    return null;
+  }
+}
+
+/**
+ * Authenticate using JWT token (fallback method)
+ */
+async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | null> {
+  try {
     // Verify token using TokenService
     const tokenService = getService<TokenService>(ServiceKeys.TOKEN_SERVICE);
     const tokenResult = await tokenService.verifyUserToken(token);
@@ -73,7 +111,7 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
     };
 
   } catch (error) {
-    console.error("Authentication error:", error);
+    console.error("JWT authentication error:", error);
     return null;
   }
 }
@@ -144,6 +182,107 @@ export function requireRole(roles: string | string[]) {
       return handler(req, user, ctx);
     };
   };
+}
+
+/**
+ * Create a new session for authenticated user
+ */
+export async function createUserSession(user: AuthenticatedUser, req: Request): Promise<string> {
+  try {
+    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    
+    // Generate session ID
+    const sessionId = crypto.randomUUID();
+    
+    // Extract request metadata
+    const ipAddress = getClientIP(req);
+    const userAgent = req.headers.get("User-Agent") || undefined;
+    
+    // Create session data
+    const sessionData = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      emailVerified: user.emailVerified,
+      loginTime: new Date(),
+      lastActivity: new Date(),
+      ipAddress,
+      userAgent
+    };
+
+    // Create session in Redis
+    await sessionService.createSession(sessionId, sessionData);
+    
+    return sessionId;
+  } catch (error) {
+    console.error("Failed to create user session:", error);
+    throw new Error("Failed to create session");
+  }
+}
+
+/**
+ * Invalidate user session
+ */
+export async function invalidateUserSession(sessionId: string): Promise<void> {
+  try {
+    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    await sessionService.invalidateSession(sessionId);
+  } catch (error) {
+    console.error("Failed to invalidate session:", error);
+    // Don't throw error for session invalidation failures
+  }
+}
+
+/**
+ * Invalidate all sessions for a user
+ */
+export async function invalidateAllUserSessions(userId: string): Promise<void> {
+  try {
+    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    await sessionService.invalidateUserSessions(userId);
+  } catch (error) {
+    console.error("Failed to invalidate user sessions:", error);
+    // Don't throw error for session invalidation failures
+  }
+}
+
+/**
+ * Get client IP address from request
+ */
+function getClientIP(req: Request): string | undefined {
+  // Check for forwarded headers first (for reverse proxies)
+  const forwarded = req.headers.get("X-Forwarded-For");
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  const realIP = req.headers.get("X-Real-IP");
+  if (realIP) {
+    return realIP;
+  }
+
+  // For development, we might not have these headers
+  return undefined;
+}
+
+/**
+ * Create session cookie string
+ */
+export function createSessionCookie(sessionId: string, maxAge: number = 86400): string {
+  const secure = Deno.env.get("ENVIRONMENT") === "production";
+  const sameSite = "Lax";
+  
+  return `session_id=${sessionId}; HttpOnly; Secure=${secure}; SameSite=${sameSite}; Max-Age=${maxAge}; Path=/`;
+}
+
+/**
+ * Create session invalidation cookie string
+ */
+export function createSessionInvalidationCookie(): string {
+  const secure = Deno.env.get("ENVIRONMENT") === "production";
+  
+  return `session_id=; HttpOnly; Secure=${secure}; SameSite=Lax; Max-Age=0; Path=/`;
 }
 
 /**

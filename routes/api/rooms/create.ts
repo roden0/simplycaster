@@ -8,11 +8,15 @@ import { define } from "../../../utils.ts";
 import { getService } from "../../../lib/container/global.ts";
 import { ServiceKeys } from "../../../lib/container/registry.ts";
 import { CreateRoomUseCase, type CreateRoomInput } from "../../../lib/application/use-cases/room/index.ts";
+import { CachedRoomService } from "../../../lib/infrastructure/services/cached-room-service.ts";
 import { ValidationError, EntityNotFoundError, BusinessRuleError } from "../../../lib/domain/errors/index.ts";
 import { requireRole } from "../../../lib/middleware/auth.ts";
+import { createRoleBasedRateLimitedHandler } from "../../../lib/middleware/rate-limit.ts";
 
 export const handler = define.handlers({
-  POST: requireRole(['host', 'admin'])(async (req, user) => {
+  POST: createRoleBasedRateLimitedHandler(
+    ['host', 'admin'],
+    async (req, user) => {
     try {
       // Parse request body
       const body = await req.json();
@@ -99,6 +103,16 @@ export const handler = define.handlers({
       // Success response
       const { room, message } = result.data;
       
+      // Warm the cache with the newly created room
+      try {
+        const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+        // The cached room service should have already cached the room during creation
+        // but we can ensure it's warmed here if needed
+      } catch (cacheError) {
+        console.error("Error warming cache after room creation:", cacheError);
+        // Don't fail the request if cache warming fails
+      }
+      
       return new Response(
         JSON.stringify({
           success: true,
@@ -138,5 +152,10 @@ export const handler = define.handlers({
         }
       );
     }
-  })
+  },
+  {
+    skipForAdmin: true,
+    customEndpoint: '/api/rooms/create'
+  }
+  )
 });

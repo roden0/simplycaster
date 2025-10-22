@@ -15,3 +15,11 @@ export {
   type ServiceKey,
   type ServiceRegistryConfig 
 } from './registry.ts';
+export {
+  initializeRedis,
+  getRedisService,
+  isRedisHealthy,
+  getRedisHealth,
+  shutdownRedis,
+  withRedisOrFallback
+} from './redis-global.ts';

@@ -14,6 +14,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 ### Technical Features
 - **Clean Architecture**: Service layer with dependency injection and use cases
 - **Better Auth Integration**: Modern authentication system with session management and security features
+- **Redis Performance Layer**: High-performance caching, session management, and real-time features
 - **Server-Side Rendering (SSR)**: Optimal performance with Fresh framework
 - **Islands Architecture**: Interactive components hydrated only where needed
 - **Dark/Light Theme**: System preference detection with localStorage persistence
@@ -27,6 +28,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 
 - **Deno** (version 1.37 or later) - [Install Deno](https://deno.land/manual/getting_started/installation)
 - **PostgreSQL** (version 14 or later) - [Install PostgreSQL](https://www.postgresql.org/download/)
+- **Redis** (version 6 or later) - [Install Redis](https://redis.io/download)
 - **Node.js** (for some build tools) - [Install Node.js](https://nodejs.org/)
 
 ### Installation
@@ -42,21 +44,27 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
    cp .env.example .env
    ```
 
-3. **Configure your database in `.env`:**
+3. **Configure your database and Redis in `.env`:**
    ```env
    DATABASE_URL=postgresql://username:password@localhost:5432/simplycaster
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   REDIS_PASSWORD=your-redis-password
    JWT_SECRET=your-super-secret-jwt-key-here
    PASSWORD_PEPPER=your-password-pepper-here
    BASE_URL=http://localhost:8000
    ```
 
-4. **Set up the database:**
+4. **Set up the database and Redis:**
    ```bash
    # Create the database
    createdb simplycaster
    
    # Run migrations (if available)
    deno task db:migrate
+   
+   # Start Redis server (if not running as service)
+   redis-server
    ```
 
 5. **Install dependencies and start development server:**
@@ -123,6 +131,51 @@ SimplyCaster follows **Clean Architecture** principles:
 - **Application Layer**: Use cases and business operations
 - **Infrastructure Layer**: Database, external services, and technical implementations
 - **Presentation Layer**: Routes, components, and user interface
+
+### Redis Performance Layer
+
+SimplyCaster leverages **Redis** for high-performance caching and real-time features:
+
+#### Core Redis Features
+- **Intelligent Caching**: Multi-layer caching strategy with automatic invalidation
+- **Session Management**: Redis-based session storage with automatic cleanup
+- **Rate Limiting**: Sliding window rate limiting for API protection
+- **Real-time Communication**: Pub/Sub for live room updates and notifications
+- **Performance Optimization**: Query result caching and database load reduction
+
+#### Monitoring & Observability
+- **Health Monitoring**: Comprehensive Redis health checks and diagnostics
+- **Performance Metrics**: Real-time metrics collection with alerting
+- **Operation Logging**: Structured logging for all Redis operations
+- **Slow Query Detection**: Automatic detection and logging of slow operations
+- **Cache Analytics**: Hit rates, response times, and performance insights
+
+#### Redis Configuration
+```env
+# Basic Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your-redis-password
+REDIS_DATABASE=0
+
+# Performance Tuning
+REDIS_MAX_RETRIES=3
+REDIS_RETRY_DELAY=1000
+REDIS_COMMAND_TIMEOUT=5000
+REDIS_KEEP_ALIVE=true
+
+# Monitoring Configuration
+REDIS_METRICS_INTERVAL=30000
+REDIS_SLOW_QUERY_THRESHOLD=50
+REDIS_LOG_LEVEL=info
+REDIS_ENABLE_MONITORING=true
+```
+
+#### Redis APIs
+- **Health Check**: `GET /api/admin/redis/health` - Redis health status and diagnostics
+- **Metrics**: `GET /api/admin/redis/metrics` - Performance metrics and alerts
+- **Logs**: `GET /api/admin/redis/logs` - Operation logs and error analysis
+- **Cache Management**: `POST /api/admin/cache/warm` - Cache warming and invalidation
 
 ### Authentication & Security
 
@@ -235,11 +288,25 @@ SimplyCaster is designed for self-hosted deployment:
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `DATABASE_URL` | PostgreSQL connection string | - | ✅ |
+| `REDIS_HOST` | Redis server hostname | `localhost` | ✅ |
+| `REDIS_PORT` | Redis server port | `6379` | ✅ |
+| `REDIS_PASSWORD` | Redis authentication password | - | ❌ |
 | `JWT_SECRET` | Secret key for JWT tokens | - | ✅ |
 | `PASSWORD_PEPPER` | Additional password security | - | ✅ |
 | `BASE_URL` | Application base URL | `http://localhost:8000` | ✅ |
 | `NODE_ENV` | Environment mode | `development` | ❌ |
 | `PORT` | Server port | `8000` | ❌ |
+
+### Redis Configuration Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REDIS_METRICS_INTERVAL` | Metrics collection interval (ms) | `30000` |
+| `REDIS_SLOW_QUERY_THRESHOLD` | Slow query threshold (ms) | `50` |
+| `REDIS_LOG_LEVEL` | Logging level (debug/info/warn/error) | `info` |
+| `REDIS_ENABLE_MONITORING` | Enable Redis monitoring | `true` |
+| `REDIS_CACHE_TTL_DEFAULT` | Default cache TTL (seconds) | `3600` |
+| `REDIS_SESSION_TTL` | Session TTL (seconds) | `86400` |
 
 ### Database Configuration
 
@@ -249,6 +316,16 @@ SimplyCaster uses PostgreSQL with the following features:
 - **Better Auth Tables** for session and account management
 - **Audit logging** for security tracking
 - **Soft deletes** for data retention
+
+### Redis Configuration
+
+SimplyCaster uses Redis for high-performance caching and real-time features:
+- **Multi-layer Caching** with intelligent invalidation strategies
+- **Session Storage** with automatic cleanup and expiration
+- **Rate Limiting** using sliding window algorithms
+- **Pub/Sub Messaging** for real-time room updates
+- **Performance Monitoring** with comprehensive metrics and alerting
+- **Operation Logging** with structured audit trails
 
 ## 🤝 Contributing
 
