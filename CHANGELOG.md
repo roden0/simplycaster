@@ -51,9 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Notes
 
-### Version 1.0.0 (Upcoming)
-
-This major release introduces a complete architectural overhaul with:
+### Version 0.1.0 (WIP)
 
 **🏗️ Clean Architecture**
 - Service layer with dependency injection

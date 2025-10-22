@@ -577,7 +577,7 @@ The following features are planned for future development:
 We welcome contributions and feedback on these planned features:
 - Review and discuss roadmap items in [GitHub Discussions](https://github.com/your-username/simplycaster/discussions)
 - Submit feature requests and improvements via [GitHub Issues](https://github.com/your-username/simplycaster/issues)
-- Check existing specs in `.kiro/specs/` for detailed implementation plans
+
 
 ## 🆘 Support
 
