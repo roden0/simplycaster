@@ -519,6 +519,66 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
+## 📋 TODO & Roadmap
+
+The following features are planned for future development:
+
+### 🎥 WebRTC Infrastructure
+- **Signaling Server**: Implement WebRTC signaling server for peer-to-peer connection establishment
+  - WebSocket-based signaling for offer/answer exchange
+  - Session management for multi-participant rooms
+  - Connection state management and recovery
+  - Integration with existing room management system
+
+- **ICE Servers**: Configure and integrate ICE (Interactive Connectivity Establishment) servers
+  - STUN server configuration for NAT traversal
+  - TURN server setup for relay connections behind restrictive firewalls
+  - Automatic server selection and failover
+  - Cost optimization for TURN server usage
+
+- **Client-side WebRTC Code**: Develop comprehensive client-side WebRTC implementation
+  - MediaStream handling for audio/video capture
+  - RTCPeerConnection management for multiple participants
+  - Audio processing and quality optimization
+  - Adaptive bitrate and quality control
+  - Screen sharing and presentation mode
+  - Real-time audio level monitoring
+  - Connection quality indicators and diagnostics
+
+### 📊 Enhanced Telemetry and Monitoring
+- **Application Performance Monitoring (APM)**: Integrate comprehensive application monitoring
+  - Request tracing and performance profiling
+  - Database query performance monitoring
+  - Memory usage and garbage collection metrics
+  - Custom business metrics and KPIs
+  - Error tracking and alerting
+
+- **WebRTC Telemetry**: Implement detailed WebRTC connection monitoring
+  - Connection quality metrics (latency, packet loss, jitter)
+  - Audio quality measurements and analysis
+  - Bandwidth usage and optimization tracking
+  - Participant connection diagnostics
+  - Real-time quality alerts and notifications
+
+- **Business Intelligence**: Add analytics and reporting capabilities
+  - Recording session analytics and insights
+  - User engagement and usage patterns
+  - System performance trends and capacity planning
+  - Cost analysis and optimization recommendations
+  - Custom dashboards and reporting tools
+
+### 🔧 Implementation Priority
+1. **Phase 1**: Signaling Server and basic WebRTC infrastructure
+2. **Phase 2**: ICE servers configuration and NAT traversal
+3. **Phase 3**: Client-side WebRTC implementation and audio processing
+4. **Phase 4**: Enhanced telemetry and monitoring systems
+
+### 🤝 Contributing to Roadmap
+We welcome contributions and feedback on these planned features:
+- Review and discuss roadmap items in [GitHub Discussions](https://github.com/your-username/simplycaster/discussions)
+- Submit feature requests and improvements via [GitHub Issues](https://github.com/your-username/simplycaster/issues)
+- Check existing specs in `.kiro/specs/` for detailed implementation plans
+
 ## 🆘 Support
 
 - **Documentation**: Check the `/docs` directory for detailed guides
