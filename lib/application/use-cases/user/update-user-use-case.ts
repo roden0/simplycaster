@@ -10,6 +10,9 @@ import { PasswordService } from '../../../domain/services/password-service.ts';
 import { User, UpdateUserData, UserDomain } from '../../../domain/entities/user.ts';
 import { UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, AuthorizationError, BusinessRuleError, EntityNotFoundError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, AuthEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for updating a user
@@ -41,7 +44,8 @@ export interface UpdateUserOutput {
 export class UpdateUserUseCase {
   constructor(
     private userRepository: UserRepository,
-    private passwordService: PasswordService
+    private passwordService: PasswordService,
+    private eventPublisher?: EventPublisher
   ) { }
 
   /**
@@ -105,7 +109,43 @@ export class UpdateUserUseCase {
         return Err(updateResult.error);
       }
 
-      // 8. Prepare success response
+      // 8. Publish user updated event (only if there were actual changes)
+      if (this.eventPublisher && changedFields.length > 0) {
+        try {
+          const correlationId = generateCorrelationId();
+          const authEventData: AuthEventData = {
+            userId: updateResult.data.id,
+            email: updateResult.data.email,
+            role: updateResult.data.role as 'admin' | 'host' | 'guest'
+          };
+
+          const userUpdatedEvent = createBaseEvent(
+            EventType.USER_UPDATED,
+            authEventData,
+            {
+              correlationId,
+              userId: input.updatedBy,
+              priority: 'normal',
+              source: 'user-service'
+            }
+          );
+
+          // Add changed fields to event metadata
+          userUpdatedEvent.metadata = {
+            ...userUpdatedEvent.metadata,
+            changedFields: changedFields,
+            updatedBy: input.updatedBy,
+            updatedByRole: input.updatedByRole
+          };
+
+          await this.eventPublisher.publish(userUpdatedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the user update
+          console.error('Failed to publish user updated event:', error);
+        }
+      }
+
+      // 9. Prepare success response
       const output: UpdateUserOutput = {
         user: updateResult.data,
         message: `User ${updateResult.data.email} updated successfully`,

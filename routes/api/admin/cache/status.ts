@@ -15,8 +15,8 @@ export const handler = define.handlers({
     GET: requireRole(['admin'])(async (req, user) => {
         try {
             // Get services
-            const cacheWarmingService = getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
-            const redisService = getService<RedisService>(ServiceKeys.REDIS_SERVICE);
+            const cacheWarmingService = await getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
+            const redisService = await getService<RedisService>(ServiceKeys.REDIS_SERVICE);
 
             // Get cache warming status
             const cacheWarmingStatus = cacheWarmingService.getStatus();

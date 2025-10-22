@@ -31,7 +31,7 @@ export const handler = define.handlers({
       };
 
       // Get create room use case from container
-      const createRoomUseCase = getService<CreateRoomUseCase>(
+      const createRoomUseCase = await getService<CreateRoomUseCase>(
         ServiceKeys.CREATE_ROOM_USE_CASE
       );
 
@@ -105,7 +105,7 @@ export const handler = define.handlers({
       
       // Warm the cache with the newly created room
       try {
-        const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+        const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
         // The cached room service should have already cached the room during creation
         // but we can ensure it's warmed here if needed
       } catch (cacheError) {

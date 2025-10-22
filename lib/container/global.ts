@@ -21,9 +21,17 @@ export function getContainer(): Container {
 }
 
 /**
- * Get a service from the global container
+ * Get a service from the global container (async)
  */
-export function getService<T>(key: string): T {
+export async function getService<T>(key: string): Promise<T> {
   const container = getContainer();
-  return container.get<T>(key);
+  return await container.get<T>(key);
+}
+
+/**
+ * Get a service from the global container (sync)
+ */
+export function getServiceSync<T>(key: string): T {
+  const container = getContainer();
+  return container.getSync<T>(key);
 }

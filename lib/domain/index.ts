@@ -3,7 +3,7 @@
 // ============================================================================
 
 // Common types and utilities
-export * from './types/common.ts';
+export * from './types/index.ts';
 
 // Domain errors
 export * from './errors/index.ts';

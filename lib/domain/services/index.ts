@@ -10,3 +10,4 @@ export * from './redis-service.ts';
 export * from './session-service.ts';
 export * from './rate-limit-service.ts';
 export * from './realtime-service.ts';
+export * from './event-utils.ts';

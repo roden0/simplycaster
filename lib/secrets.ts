@@ -124,6 +124,39 @@ export async function getPepperSecret(): Promise<string> {
 }
 
 /**
+ * Gets RabbitMQ connection URL from environment or Docker secret
+ * @returns RabbitMQ connection URL
+ */
+export async function getRabbitMQUrl(): Promise<string> {
+  const url = await getConfig("RABBITMQ_URL", "rabbitmq_url", "amqp://localhost:5672");
+  
+  if (!url) {
+    throw new Error(
+      "RABBITMQ_URL is required. Please set RABBITMQ_URL environment variable " +
+      "or provide rabbitmq_url Docker secret."
+    );
+  }
+
+  return url;
+}
+
+/**
+ * Gets RabbitMQ exchange name from environment
+ * @returns RabbitMQ exchange name
+ */
+export async function getRabbitMQExchange(): Promise<string> {
+  return await getConfig("RABBITMQ_EXCHANGE", undefined, "simplycast.events") || "simplycast.events";
+}
+
+/**
+ * Gets RabbitMQ virtual host from environment
+ * @returns RabbitMQ virtual host
+ */
+export async function getRabbitMQVHost(): Promise<string> {
+  return await getConfig("RABBITMQ_VHOST", undefined, "/") || "/";
+}
+
+/**
  * Validates that all required secrets are available
  * @returns Promise that resolves if all secrets are valid
  */
@@ -132,9 +165,11 @@ export async function validateSecrets(): Promise<void> {
     await getDatabaseUrl();
     await getJwtSecret();
     await getPepperSecret();
+    await getRabbitMQUrl();
     console.log("✅ All required secrets validated successfully");
   } catch (error) {
-    console.error("❌ Secret validation failed:", error.message);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("❌ Secret validation failed:", errorMessage);
     throw error;
   }
 }

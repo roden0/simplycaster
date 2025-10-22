@@ -137,7 +137,7 @@ export const handler = define.handlers({
 
             // Warm the cache with the updated user
             try {
-                const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+                const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
                 // The cached user service should have already cached the updated user
                 // but we can ensure it's warmed here if needed
             } catch (cacheError) {

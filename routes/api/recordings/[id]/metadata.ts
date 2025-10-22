@@ -31,7 +31,7 @@ export const handler = define.handlers({
             }
 
             // Get cached recording service for better performance
-            const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+            const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
 
             // Get recording with files from cache
             const recordingWithFiles = await cachedRecordingService.getRecordingWithFiles(recordingId);

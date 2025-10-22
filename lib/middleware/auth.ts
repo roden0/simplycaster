@@ -45,7 +45,7 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
 
     // First, try Redis session validation if session ID is available
     if (sessionId) {
-      const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+      const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
       const sessionResult = await sessionService.validateSession(sessionId);
 
       if (sessionResult.success && sessionResult.data) {
@@ -78,7 +78,7 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
 async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | null> {
   try {
     // Verify token using TokenService
-    const tokenService = getService<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const tokenService = await getService<TokenService>(ServiceKeys.TOKEN_SERVICE);
     const tokenResult = await tokenService.verifyUserToken(token);
 
     if (!tokenResult.success) {
@@ -88,7 +88,7 @@ async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | n
     const payload = tokenResult.data;
 
     // Get user from repository to ensure they still exist and are active
-    const userRepository = getService<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const userRepository = await getService<UserRepository>(ServiceKeys.USER_REPOSITORY);
     const userResult = await userRepository.findById(payload.userId);
 
     if (!userResult.success || !userResult.data) {
@@ -189,7 +189,7 @@ export function requireRole(roles: string | string[]) {
  */
 export async function createUserSession(user: AuthenticatedUser, req: Request): Promise<string> {
   try {
-    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
     
     // Generate session ID
     const sessionId = crypto.randomUUID();
@@ -226,7 +226,7 @@ export async function createUserSession(user: AuthenticatedUser, req: Request): 
  */
 export async function invalidateUserSession(sessionId: string): Promise<void> {
   try {
-    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
     await sessionService.invalidateSession(sessionId);
   } catch (error) {
     console.error("Failed to invalidate session:", error);
@@ -239,7 +239,7 @@ export async function invalidateUserSession(sessionId: string): Promise<void> {
  */
 export async function invalidateAllUserSessions(userId: string): Promise<void> {
   try {
-    const sessionService = getService<SessionService>(ServiceKeys.SESSION_SERVICE);
+    const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
     await sessionService.invalidateUserSessions(userId);
   } catch (error) {
     console.error("Failed to invalidate user sessions:", error);

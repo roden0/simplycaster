@@ -10,6 +10,9 @@ import { PasswordService } from '../../../domain/services/password-service.ts';
 import { User, CreateUserData, UserDomain } from '../../../domain/entities/user.ts';
 import { UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, ConflictError, BusinessRuleError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, AuthEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for creating a user
@@ -37,7 +40,8 @@ export interface CreateUserOutput {
 export class CreateUserUseCase {
   constructor(
     private userRepository: UserRepository,
-    private passwordService: PasswordService
+    private passwordService: PasswordService,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -116,7 +120,35 @@ export class CreateUserUseCase {
       // For now, we'll assume the password is stored as part of the user creation
       // In a production system, you'd want to handle this in a transaction
 
-      // 12. Prepare success response
+      // 12. Publish user created event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const authEventData: AuthEventData = {
+            userId: createResult.data.id,
+            email: createResult.data.email,
+            role: createResult.data.role as 'admin' | 'host' | 'guest'
+          };
+
+          const userCreatedEvent = createBaseEvent(
+            EventType.USER_CREATED,
+            authEventData,
+            {
+              correlationId,
+              userId: input.createdBy || createResult.data.id,
+              priority: 'normal',
+              source: 'user-service'
+            }
+          );
+
+          await this.eventPublisher.publish(userCreatedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the user creation
+          console.error('Failed to publish user created event:', error);
+        }
+      }
+
+      // 13. Prepare success response
       const output: CreateUserOutput = {
         user: createResult.data,
         message: `User ${createResult.data.email} created successfully with role ${createResult.data.role}`

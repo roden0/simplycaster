@@ -46,7 +46,7 @@ export const handler = define.handlers({
       };
 
       // Get authentication use case from container
-      const authenticateUserUseCase = getService<AuthenticateUserUseCase>(
+      const authenticateUserUseCase = await getService<AuthenticateUserUseCase>(
         ServiceKeys.AUTHENTICATE_USER_USE_CASE
       );
 

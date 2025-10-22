@@ -19,7 +19,7 @@ import { CacheWarmingService } from "../lib/infrastructure/services/cache-warmin
 
 export async function getUserById(id: string): Promise<User | null> {
   try {
-    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
     return await cachedUserService.getUserById(id);
   } catch (error) {
     console.error("Error getting user from cached service, falling back to direct DB:", error);
@@ -36,7 +36,7 @@ export async function getUserById(id: string): Promise<User | null> {
 
 export async function getUserByEmail(email: string): Promise<User | null> {
   try {
-    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
     return await cachedUserService.getUserByEmail(email);
   } catch (error) {
     console.error("Error getting user by email from cached service, falling back to direct DB:", error);
@@ -53,7 +53,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
 export async function getAllUsers(): Promise<User[]> {
   try {
-    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
     return await cachedUserService.getAllUsers();
   } catch (error) {
     console.error("Error getting all users from cached service, falling back to direct DB:", error);
@@ -72,7 +72,7 @@ export async function getAllUsers(): Promise<User[]> {
 
 export async function getRoomById(id: string): Promise<Room | null> {
   try {
-    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
     return await cachedRoomService.getRoomById(id);
   } catch (error) {
     console.error("Error getting room from cached service, falling back to direct DB:", error);
@@ -89,7 +89,7 @@ export async function getRoomById(id: string): Promise<Room | null> {
 
 export async function getActiveRooms(): Promise<Room[]> {
   try {
-    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
     return await cachedRoomService.getActiveRooms();
   } catch (error) {
     console.error("Error getting active rooms from cached service, falling back to direct DB:", error);
@@ -104,7 +104,7 @@ export async function getActiveRooms(): Promise<Room[]> {
 
 export async function getRoomsByHostId(hostId: string): Promise<Room[]> {
   try {
-    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
     return await cachedRoomService.getRoomsByHostId(hostId);
   } catch (error) {
     console.error("Error getting rooms by host from cached service, falling back to direct DB:", error);
@@ -123,7 +123,7 @@ export async function getRoomsByHostId(hostId: string): Promise<Room[]> {
 
 export async function getRecordingById(id: string): Promise<Recording | null> {
   try {
-    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
     return await cachedRecordingService.getRecordingById(id);
   } catch (error) {
     console.error("Error getting recording from cached service, falling back to direct DB:", error);
@@ -140,7 +140,7 @@ export async function getRecordingById(id: string): Promise<Recording | null> {
 
 export async function getRecordingsByUserId(userId: string): Promise<Recording[]> {
   try {
-    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
     return await cachedRecordingService.getRecordingsByCreator(userId);
   } catch (error) {
     console.error("Error getting recordings by user from cached service, falling back to direct DB:", error);
@@ -177,7 +177,7 @@ export async function getRecordingStats(userId: string): Promise<{
   totalSize: number;
 }> {
   try {
-    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
     return await cachedRecordingService.getRecordingStats(userId);
   } catch (error) {
     console.error("Error getting recording stats from cached service, falling back to calculation:", error);
@@ -328,7 +328,7 @@ export async function getRecentAuditLogs(limit = 100): Promise<AuditLog[]> {
  */
 export async function invalidateUserCache(userId: string): Promise<void> {
   try {
-    const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+    const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
     await cachedUserService.invalidateAllUserCache();
   } catch (error) {
     console.error("Error invalidating user cache:", error);
@@ -340,7 +340,7 @@ export async function invalidateUserCache(userId: string): Promise<void> {
  */
 export async function invalidateRoomCache(roomId: string, hostId?: string): Promise<void> {
   try {
-    const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+    const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
     await cachedRoomService.invalidateAllRoomCache();
   } catch (error) {
     console.error("Error invalidating room cache:", error);
@@ -352,7 +352,7 @@ export async function invalidateRoomCache(roomId: string, hostId?: string): Prom
  */
 export async function invalidateRecordingCache(recordingId: string, createdBy?: string): Promise<void> {
   try {
-    const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+    const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
     await cachedRecordingService.invalidateAllRecordingCache();
     
     if (createdBy) {
@@ -371,7 +371,7 @@ export async function warmCache(): Promise<void> {
     console.log("Starting cache warming...");
     
     // Get cache warming service
-    const cacheWarmingService = getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
+    const cacheWarmingService = await getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
     
     // Trigger manual cache warming
     await cacheWarmingService.triggerManualWarming();
@@ -384,9 +384,9 @@ export async function warmCache(): Promise<void> {
     try {
       console.log("Attempting fallback cache warming...");
       
-      const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
-      const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
-      const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+      const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+      const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+      const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
       
       // Basic cache warming
       await cachedRoomService.warmRoomListCache();

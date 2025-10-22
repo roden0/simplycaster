@@ -21,8 +21,8 @@ export const handler = define.handlers({
       const status = url.searchParams.get("status");
 
       // Get cached room service from container for better performance
-      const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
-      const roomRepository = getService<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+      const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+      const roomRepository = await getService<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
 
       let rooms: any[] = [];
       let pagination = {

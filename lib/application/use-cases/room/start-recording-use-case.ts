@@ -14,6 +14,9 @@ import { Room, RoomDomain } from '../../../domain/entities/room.ts';
 import { Recording, CreateRecordingData, RecordingDomain } from '../../../domain/entities/recording.ts';
 import { RoomStatus, RecordingStatus, UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, BusinessRuleError, EntityNotFoundError, ConflictError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, RecordingEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for starting a recording
@@ -46,7 +49,8 @@ export class StartRecordingUseCase {
     private recordingRepository: RecordingRepository,
     private userRepository: UserRepository,
     private storageService: StorageService,
-    private realtimeService?: RealtimeService
+    private realtimeService?: RealtimeService,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -133,7 +137,36 @@ export class StartRecordingUseCase {
         return Err(roomUpdateResult.error);
       }
 
-      // 11. Broadcast recording started event
+      // 11. Publish recording started event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const recordingEventData: RecordingEventData = {
+            recordingId: createRecordingResult.data.id,
+            roomId: input.roomId,
+            folderName: folderName,
+            participantCount: input.participantCount || 0
+          };
+
+          const recordingStartedEvent = createBaseEvent(
+            EventType.RECORDING_STARTED,
+            recordingEventData,
+            {
+              correlationId,
+              userId: input.hostId,
+              priority: 'high',
+              source: 'recording-service'
+            }
+          );
+
+          await this.eventPublisher.publish(recordingStartedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the recording start
+          console.error('Failed to publish recording started event:', error);
+        }
+      }
+
+      // 12. Broadcast recording started event
       if (this.realtimeService) {
         try {
           await this.realtimeService.broadcastRecordingStarted(
@@ -146,7 +179,7 @@ export class StartRecordingUseCase {
         }
       }
 
-      // 12. Prepare success response
+      // 13. Prepare success response
       const output: StartRecordingOutput = {
         recording: createRecordingResult.data,
         room: roomUpdateResult.data,

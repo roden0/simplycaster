@@ -46,7 +46,7 @@ export const handler = define.handlers({
             }
 
             // Get cached user service for better performance
-            const cachedUserService = getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
+            const cachedUserService = await getService<CachedUserService>(ServiceKeys.CACHED_USER_SERVICE);
 
             // Get user profile from cache
             const userProfile = await cachedUserService.getUserById(userId);

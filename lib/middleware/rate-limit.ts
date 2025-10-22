@@ -31,7 +31,7 @@ export function withRateLimit(
   return async (req: Request, ctx?: any): Promise<Response> => {
     try {
       // Get rate limiting service
-      const rateLimitService = getService<RateLimitService>(ServiceKeys.RATE_LIMIT_SERVICE);
+      const rateLimitService = await getService<RateLimitService>(ServiceKeys.RATE_LIMIT_SERVICE);
       
       // Extract context information
       const context = await extractRateLimitContext(req);
@@ -241,7 +241,7 @@ export function withIPRateLimit(
 ) {
   return async (req: Request, ctx?: any): Promise<Response> => {
     try {
-      const rateLimitService = getService<RateLimitService>(ServiceKeys.RATE_LIMIT_SERVICE);
+      const rateLimitService = await getService<RateLimitService>(ServiceKeys.RATE_LIMIT_SERVICE);
       const ipAddress = getClientIP(req);
       
       // Check rate limit for IP address

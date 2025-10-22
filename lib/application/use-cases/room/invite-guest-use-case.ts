@@ -13,6 +13,9 @@ import { Room, RoomDomain } from '../../../domain/entities/room.ts';
 import { Guest, CreateGuestData, GuestDomain } from '../../../domain/entities/guest.ts';
 import { UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, BusinessRuleError, EntityNotFoundError, ConflictError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, UserEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for inviting a guest
@@ -48,7 +51,8 @@ export class InviteGuestUseCase {
     private roomRepository: RoomRepository,
     private guestRepository: GuestRepository,
     private userRepository: UserRepository,
-    private tokenService: TokenService
+    private tokenService: TokenService,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -120,10 +124,40 @@ export class InviteGuestUseCase {
         return Err(createGuestResult.error);
       }
 
-      // 9. Generate invite URL
+      // 9. Publish user joined event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const userEventData: UserEventData = {
+            userId: createGuestResult.data.id,
+            roomId: input.roomId,
+            displayName: input.displayName,
+            participantType: 'guest',
+            email: input.email
+          };
+
+          const userJoinedEvent = createBaseEvent(
+            EventType.USER_JOINED,
+            userEventData,
+            {
+              correlationId,
+              userId: input.hostId,
+              priority: 'normal',
+              source: 'room-service'
+            }
+          );
+
+          await this.eventPublisher.publish(userJoinedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the guest invitation
+          console.error('Failed to publish user joined event:', error);
+        }
+      }
+
+      // 10. Generate invite URL
       const inviteUrl = this.generateInviteUrl(tokenResult.data.token, room.slug || room.id);
 
-      // 10. Prepare success response
+      // 11. Prepare success response
       const output: InviteGuestOutput = {
         guest: createGuestResult.data,
         room: room,

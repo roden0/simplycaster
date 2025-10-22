@@ -12,6 +12,7 @@ import { Database } from '../../database/connection.ts';
 import { UserRepository } from '../domain/repositories/user-repository.ts';
 import { RoomRepository } from '../domain/repositories/room-repository.ts';
 import { GuestRepository } from '../domain/repositories/guest-repository.ts';
+import { FeedEpisodeRepository } from '../domain/repositories/feed-episode-repository.ts';
 import { PasswordService } from '../domain/services/password-service.ts';
 import { StorageService } from '../domain/services/storage-service.ts';
 import { TokenService } from '../domain/services/token-service.ts';
@@ -20,6 +21,7 @@ import { CacheService } from '../domain/services/cache-service.ts';
 import { SessionService } from '../domain/services/session-service.ts';
 import { RateLimitService } from '../domain/services/rate-limit-service.ts';
 import { RealtimeService } from '../domain/services/realtime-service.ts';
+import { EventPublisher } from '../domain/types/events.ts';
 
 // Infrastructure implementations
 import { 
@@ -27,7 +29,8 @@ import {
   DrizzleRoomRepository,
   DrizzleRecordingRepository,
   DrizzleRecordingFileRepository,
-  DrizzleGuestRepository
+  DrizzleGuestRepository,
+  DrizzleFeedEpisodeRepository
 } from '../infrastructure/repositories/index.ts';
 
 import {
@@ -48,6 +51,10 @@ import { CacheServiceImpl } from '../infrastructure/services/cache-service-impl.
 import { CachedUserService } from '../infrastructure/services/cached-user-service.ts';
 import { CachedRoomService } from '../infrastructure/services/cached-room-service.ts';
 import { CachedRecordingService } from '../infrastructure/services/cached-recording-service.ts';
+import { RabbitMQEventPublisher, createRabbitMQEventPublisher } from '../infrastructure/services/rabbitmq-event-publisher.ts';
+import { RabbitMQAsyncEventPublisher, createRabbitMQAsyncEventPublisher, DEFAULT_ASYNC_CONFIG } from '../infrastructure/services/rabbitmq-async-event-publisher.ts';
+import { parseRabbitMQConfig } from '../infrastructure/services/rabbitmq-config.ts';
+import { RabbitMQMetricsCollector } from '../infrastructure/services/rabbitmq-metrics-collector.ts';
 import { RedisSessionService } from '../infrastructure/services/redis-session-service.ts';
 import { SessionManager } from '../infrastructure/services/session-manager.ts';
 import { SessionCleanupService } from '../infrastructure/services/session-cleanup.ts';
@@ -66,10 +73,24 @@ import {
 
 import {
   CreateRoomUseCase,
+  CloseRoomUseCase,
   StartRecordingUseCase,
   StopRecordingUseCase,
-  InviteGuestUseCase
+  CompleteRecordingUseCase,
+  FailRecordingUseCase,
+  InviteGuestUseCase,
+  GuestLeaveUseCase
 } from '../application/use-cases/room/index.ts';
+
+import {
+  LogoutUserUseCase
+} from '../application/use-cases/user/index.ts';
+
+import {
+  PublishEpisodeUseCase,
+  UpdateEpisodeUseCase,
+  DeleteEpisodeUseCase
+} from '../application/use-cases/feed/index.ts';
 
 /**
  * Service registry configuration
@@ -91,12 +112,16 @@ export const ServiceKeys = {
   RECORDING_REPOSITORY: 'recordingRepository',
   RECORDING_FILE_REPOSITORY: 'recordingFileRepository',
   GUEST_REPOSITORY: 'guestRepository',
+  FEED_EPISODE_REPOSITORY: 'feedEpisodeRepository',
   
   // Infrastructure Services
   PASSWORD_SERVICE: 'passwordService',
   STORAGE_SERVICE: 'storageService',
   TOKEN_SERVICE: 'tokenService',
   AUDIT_SERVICE: 'auditService',
+  EVENT_PUBLISHER: 'eventPublisher',
+  ASYNC_EVENT_PUBLISHER: 'asyncEventPublisher',
+  RABBITMQ_METRICS_COLLECTOR: 'rabbitMQMetricsCollector',
   
   // Redis Services
   REDIS_CONNECTION_MANAGER: 'redisConnectionManager',
@@ -118,14 +143,22 @@ export const ServiceKeys = {
   REDIS_LOGGER: 'redisLogger',
   REDIS_SERVICE_WITH_LOGGING: 'redisServiceWithLogging',
   
-  // Use Cases (to be added when implemented)
+  // Use Cases
   CREATE_USER_USE_CASE: 'createUserUseCase',
   AUTHENTICATE_USER_USE_CASE: 'authenticateUserUseCase',
   UPDATE_USER_USE_CASE: 'updateUserUseCase',
+  LOGOUT_USER_USE_CASE: 'logoutUserUseCase',
   CREATE_ROOM_USE_CASE: 'createRoomUseCase',
+  CLOSE_ROOM_USE_CASE: 'closeRoomUseCase',
   START_RECORDING_USE_CASE: 'startRecordingUseCase',
   STOP_RECORDING_USE_CASE: 'stopRecordingUseCase',
+  COMPLETE_RECORDING_USE_CASE: 'completeRecordingUseCase',
+  FAIL_RECORDING_USE_CASE: 'failRecordingUseCase',
   INVITE_GUEST_USE_CASE: 'inviteGuestUseCase',
+  GUEST_LEAVE_USE_CASE: 'guestLeaveUseCase',
+  PUBLISH_EPISODE_USE_CASE: 'publishEpisodeUseCase',
+  UPDATE_EPISODE_USE_CASE: 'updateEpisodeUseCase',
+  DELETE_EPISODE_USE_CASE: 'deleteEpisodeUseCase',
 } as const;
 
 export type ServiceKey = typeof ServiceKeys[keyof typeof ServiceKeys];
@@ -162,6 +195,10 @@ export function registerServices(container: Container, config: ServiceRegistryCo
     return new DrizzleGuestRepository(database);
   });
 
+  container.register(ServiceKeys.FEED_EPISODE_REPOSITORY, () => {
+    return new DrizzleFeedEpisodeRepository(database);
+  });
+
   // Register infrastructure services with concrete implementations
   container.register<PasswordService>(ServiceKeys.PASSWORD_SERVICE, () => {
     return new ArgonPasswordService();
@@ -178,6 +215,37 @@ export function registerServices(container: Container, config: ServiceRegistryCo
   container.register(ServiceKeys.AUDIT_SERVICE, () => {
     // TODO: Replace with DatabaseAuditService implementation
     throw new Error('AuditService implementation not yet available');
+  });
+
+  container.register<EventPublisher>(ServiceKeys.EVENT_PUBLISHER, async () => {
+    const rabbitMQConfig = await parseRabbitMQConfig();
+    return await createRabbitMQEventPublisher(rabbitMQConfig);
+  });
+
+  container.register<EventPublisher>(ServiceKeys.ASYNC_EVENT_PUBLISHER, async () => {
+    const rabbitMQConfig = await parseRabbitMQConfig();
+    
+    // Configure async publishing options
+    const asyncConfig = {
+      ...DEFAULT_ASYNC_CONFIG,
+      maxBufferSize: parseInt(Deno.env.get('RABBITMQ_ASYNC_BUFFER_SIZE') || '1000'),
+      flushInterval: parseInt(Deno.env.get('RABBITMQ_ASYNC_FLUSH_INTERVAL') || '5000'),
+      maxConcurrency: parseInt(Deno.env.get('RABBITMQ_ASYNC_MAX_CONCURRENCY') || '10'),
+      enableBackgroundProcessing: Deno.env.get('RABBITMQ_ASYNC_BACKGROUND_PROCESSING') !== 'false',
+      batchSize: parseInt(Deno.env.get('RABBITMQ_ASYNC_BATCH_SIZE') || '50'),
+      publishTimeout: parseInt(Deno.env.get('RABBITMQ_ASYNC_PUBLISH_TIMEOUT') || '30000'),
+      bufferConfig: {
+        maxBufferSize: parseInt(Deno.env.get('RABBITMQ_BUFFER_MAX_SIZE') || '10000'),
+        maxEventAge: parseInt(Deno.env.get('RABBITMQ_BUFFER_MAX_AGE') || '3600000'), // 1 hour
+        enablePersistence: Deno.env.get('RABBITMQ_BUFFER_PERSISTENCE') !== 'false',
+        persistentStoragePath: Deno.env.get('RABBITMQ_BUFFER_STORAGE_PATH') || './data/event-buffer.json',
+        cleanupInterval: parseInt(Deno.env.get('RABBITMQ_BUFFER_CLEANUP_INTERVAL') || '300000'), // 5 minutes
+        maxPersistentSize: parseInt(Deno.env.get('RABBITMQ_BUFFER_MAX_PERSISTENT_SIZE') || '52428800'), // 50MB
+        flushBatchSize: parseInt(Deno.env.get('RABBITMQ_BUFFER_FLUSH_BATCH_SIZE') || '100'),
+      },
+    };
+    
+    return await createRabbitMQAsyncEventPublisher(rabbitMQConfig, asyncConfig);
   });
 
   // Register Redis services
@@ -355,63 +423,132 @@ export function registerServices(container: Container, config: ServiceRegistryCo
   });
 
   // Register use cases with their dependencies
-  container.register(ServiceKeys.CREATE_USER_USE_CASE, () => {
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const passwordService = container.get<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
-    return new CreateUserUseCase(userRepository, passwordService);
+  container.register(ServiceKeys.CREATE_USER_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const passwordService = container.getSync<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new CreateUserUseCase(userRepository, passwordService, eventPublisher);
   });
 
-  container.register(ServiceKeys.AUTHENTICATE_USER_USE_CASE, () => {
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const passwordService = container.get<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
-    const tokenService = container.get<TokenService>(ServiceKeys.TOKEN_SERVICE);
-    return new AuthenticateUserUseCase(userRepository, passwordService, tokenService);
+  container.register(ServiceKeys.AUTHENTICATE_USER_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const passwordService = container.getSync<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new AuthenticateUserUseCase(userRepository, passwordService, tokenService, eventPublisher);
   });
 
-  container.register(ServiceKeys.UPDATE_USER_USE_CASE, () => {
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const passwordService = container.get<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
-    return new UpdateUserUseCase(userRepository, passwordService);
+  container.register(ServiceKeys.UPDATE_USER_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const passwordService = container.getSync<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new UpdateUserUseCase(userRepository, passwordService, eventPublisher);
   });
 
   // Register room use cases with their dependencies
-  container.register(ServiceKeys.CREATE_ROOM_USE_CASE, () => {
-    const roomRepository = container.get<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    return new CreateRoomUseCase(roomRepository, userRepository);
+  container.register(ServiceKeys.CREATE_ROOM_USE_CASE, async () => {
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new CreateRoomUseCase(roomRepository, userRepository, eventPublisher);
   });
 
-  container.register(ServiceKeys.START_RECORDING_USE_CASE, () => {
-    const roomRepository = container.get<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
-    const recordingRepository = container.get(ServiceKeys.RECORDING_REPOSITORY);
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const storageService = container.get<StorageService>(ServiceKeys.STORAGE_SERVICE);
-    const realtimeService = container.get<RealtimeService>(ServiceKeys.REALTIME_SERVICE);
-    return new StartRecordingUseCase(roomRepository, recordingRepository, userRepository, storageService, realtimeService);
+  container.register(ServiceKeys.START_RECORDING_USE_CASE, async () => {
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const recordingRepository = container.getSync(ServiceKeys.RECORDING_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const storageService = container.getSync<StorageService>(ServiceKeys.STORAGE_SERVICE);
+    const realtimeService = container.getSync<RealtimeService>(ServiceKeys.REALTIME_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new StartRecordingUseCase(roomRepository, recordingRepository, userRepository, storageService, realtimeService, eventPublisher);
   });
 
-  container.register(ServiceKeys.STOP_RECORDING_USE_CASE, () => {
-    const roomRepository = container.get<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
-    const recordingRepository = container.get(ServiceKeys.RECORDING_REPOSITORY);
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const realtimeService = container.get<RealtimeService>(ServiceKeys.REALTIME_SERVICE);
-    return new StopRecordingUseCase(roomRepository, recordingRepository, userRepository, realtimeService);
+  container.register(ServiceKeys.STOP_RECORDING_USE_CASE, async () => {
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const recordingRepository = container.getSync(ServiceKeys.RECORDING_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const realtimeService = container.getSync<RealtimeService>(ServiceKeys.REALTIME_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new StopRecordingUseCase(roomRepository, recordingRepository, userRepository, realtimeService, eventPublisher);
   });
 
-  container.register(ServiceKeys.INVITE_GUEST_USE_CASE, () => {
-    const roomRepository = container.get<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
-    const guestRepository = container.get<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
-    const userRepository = container.get<UserRepository>(ServiceKeys.USER_REPOSITORY);
-    const tokenService = container.get<TokenService>(ServiceKeys.TOKEN_SERVICE);
-    return new InviteGuestUseCase(roomRepository, guestRepository, userRepository, tokenService);
+  container.register(ServiceKeys.INVITE_GUEST_USE_CASE, async () => {
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const guestRepository = container.getSync<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new InviteGuestUseCase(roomRepository, guestRepository, userRepository, tokenService, eventPublisher);
+  });
+
+  // Register new use cases
+  container.register(ServiceKeys.LOGOUT_USER_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const sessionService = container.getSync<SessionService>(ServiceKeys.SESSION_SERVICE);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new LogoutUserUseCase(userRepository, tokenService, sessionService, eventPublisher);
+  });
+
+  container.register(ServiceKeys.CLOSE_ROOM_USE_CASE, async () => {
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const guestRepository = container.getSync<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new CloseRoomUseCase(roomRepository, guestRepository, userRepository, eventPublisher);
+  });
+
+  container.register(ServiceKeys.COMPLETE_RECORDING_USE_CASE, async () => {
+    const recordingRepository = container.getSync(ServiceKeys.RECORDING_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new CompleteRecordingUseCase(recordingRepository, eventPublisher);
+  });
+
+  container.register(ServiceKeys.FAIL_RECORDING_USE_CASE, async () => {
+    const recordingRepository = container.getSync(ServiceKeys.RECORDING_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new FailRecordingUseCase(recordingRepository, eventPublisher);
+  });
+
+  container.register(ServiceKeys.GUEST_LEAVE_USE_CASE, async () => {
+    const guestRepository = container.getSync<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
+    const roomRepository = container.getSync<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new GuestLeaveUseCase(guestRepository, roomRepository, eventPublisher);
+  });
+
+  // Register feed episode use cases
+  container.register(ServiceKeys.PUBLISH_EPISODE_USE_CASE, async () => {
+    const feedEpisodeRepository = container.getSync(ServiceKeys.FEED_EPISODE_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new PublishEpisodeUseCase(feedEpisodeRepository, eventPublisher);
+  });
+
+  container.register(ServiceKeys.UPDATE_EPISODE_USE_CASE, async () => {
+    const feedEpisodeRepository = container.getSync(ServiceKeys.FEED_EPISODE_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new UpdateEpisodeUseCase(feedEpisodeRepository, eventPublisher);
+  });
+
+  container.register(ServiceKeys.DELETE_EPISODE_USE_CASE, async () => {
+    const feedEpisodeRepository = container.getSync(ServiceKeys.FEED_EPISODE_REPOSITORY);
+    const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
+    return new DeleteEpisodeUseCase(feedEpisodeRepository, eventPublisher);
   });
 }
 
 /**
- * Type-safe service getter helper
+ * Type-safe service getter helper (async)
  */
-export function getService<T>(container: Container, key: ServiceKey): T {
-  return container.get<T>(key);
+export async function getService<T>(container: Container, key: ServiceKey): Promise<T> {
+  return await container.get<T>(key);
+}
+
+/**
+ * Type-safe service getter helper (sync)
+ */
+export function getServiceSync<T>(container: Container, key: ServiceKey): T {
+  return container.getSync<T>(key);
 }
 
 /**

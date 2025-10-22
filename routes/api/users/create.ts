@@ -60,7 +60,7 @@ export const handler = define.handlers({
       };
 
       // Get create user use case from container
-      const createUserUseCase = getService<CreateUserUseCase>(
+      const createUserUseCase = await getService<CreateUserUseCase>(
         ServiceKeys.CREATE_USER_USE_CASE
       );
 

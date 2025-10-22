@@ -13,6 +13,9 @@ import { Room, RoomDomain } from '../../../domain/entities/room.ts';
 import { Recording, RecordingDomain } from '../../../domain/entities/recording.ts';
 import { RoomStatus, RecordingStatus, UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, BusinessRuleError, EntityNotFoundError, ConflictError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, RecordingEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for stopping a recording
@@ -40,7 +43,8 @@ export class StopRecordingUseCase {
     private roomRepository: RoomRepository,
     private recordingRepository: RecordingRepository,
     private userRepository: UserRepository,
-    private realtimeService?: RealtimeService
+    private realtimeService?: RealtimeService,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -111,7 +115,39 @@ export class StopRecordingUseCase {
         return Err(roomUpdateResult.error);
       }
 
-      // 8. Broadcast recording stopped event
+      // 8. Publish recording stopped event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const durationSeconds = Math.floor((new Date().getTime() - recording.startedAt.getTime()) / 1000);
+          
+          const recordingEventData: RecordingEventData = {
+            recordingId: recording.id,
+            roomId: input.roomId,
+            folderName: recording.folderName,
+            participantCount: recording.participantCount,
+            durationSeconds: durationSeconds
+          };
+
+          const recordingStoppedEvent = createBaseEvent(
+            EventType.RECORDING_STOPPED,
+            recordingEventData,
+            {
+              correlationId,
+              userId: input.hostId,
+              priority: 'high',
+              source: 'recording-service'
+            }
+          );
+
+          await this.eventPublisher.publish(recordingStoppedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the recording stop
+          console.error('Failed to publish recording stopped event:', error);
+        }
+      }
+
+      // 9. Broadcast recording stopped event
       if (this.realtimeService) {
         try {
           await this.realtimeService.broadcastRecordingStopped(
@@ -124,7 +160,7 @@ export class StopRecordingUseCase {
         }
       }
 
-      // 9. Prepare success response
+      // 10. Prepare success response
       const output: StopRecordingOutput = {
         recording: stopRecordingResult.data,
         room: roomUpdateResult.data,

@@ -14,7 +14,7 @@ export const handler = define.handlers({
     POST: requireRole(['admin'])(async (req, user) => {
         try {
             // Get cache warming service
-            const cacheWarmingService = getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
+            const cacheWarmingService = await getService<CacheWarmingService>(ServiceKeys.CACHE_WARMING_SERVICE);
 
             // Get current status before warming
             const statusBefore = cacheWarmingService.getStatus();

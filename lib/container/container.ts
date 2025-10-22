@@ -5,7 +5,7 @@
  * and type safety for dependency management.
  */
 
-export type ServiceFactory<T = any> = () => T;
+export type ServiceFactory<T = any> = () => T | Promise<T>;
 export type ServiceKey = string;
 
 export class Container {
@@ -29,7 +29,34 @@ export class Container {
    * @param key - Service identifier
    * @returns Service instance
    */
-  get<T>(key: ServiceKey): T {
+  async get<T>(key: ServiceKey): Promise<T> {
+    // Return existing instance if available
+    if (this.services.has(key)) {
+      return this.services.get(key) as T;
+    }
+
+    // Create new instance using factory
+    const factory = this.factories.get(key);
+    if (!factory) {
+      throw new Error(`Service ${key} not registered`);
+    }
+
+    try {
+      const instance = await factory();
+      this.services.set(key, instance);
+      return instance as T;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create service ${key}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Get a service instance synchronously (for backward compatibility)
+   * @param key - Service identifier
+   * @returns Service instance
+   */
+  getSync<T>(key: ServiceKey): T {
     // Return existing instance if available
     if (this.services.has(key)) {
       return this.services.get(key) as T;
@@ -43,6 +70,9 @@ export class Container {
 
     try {
       const instance = factory();
+      if (instance instanceof Promise) {
+        throw new Error(`Service ${key} factory returns a Promise, use get() instead of getSync()`);
+      }
       this.services.set(key, instance);
       return instance as T;
     } catch (error) {

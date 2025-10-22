@@ -50,7 +50,7 @@ export const handler = define.handlers({
       };
 
       // Get stop recording use case from container
-      const stopRecordingUseCase = getService<StopRecordingUseCase>(
+      const stopRecordingUseCase = await getService<StopRecordingUseCase>(
         ServiceKeys.STOP_RECORDING_USE_CASE
       );
 
@@ -138,8 +138,8 @@ export const handler = define.handlers({
       
       // Update cache with final recording and room data
       try {
-        const cachedRoomService = getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
-        const cachedRecordingService = getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
+        const cachedRoomService = await getService<CachedRoomService>(ServiceKeys.CACHED_ROOM_SERVICE);
+        const cachedRecordingService = await getService<CachedRecordingService>(ServiceKeys.CACHED_RECORDING_SERVICE);
         
         // Update room status in cache
         await cachedRoomService.updateRoomStatus(roomId, room.status);

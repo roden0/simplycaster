@@ -13,6 +13,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 
 ### Technical Features
 - **Clean Architecture**: Service layer with dependency injection and use cases
+- **Event-Driven Architecture**: RabbitMQ-based domain events for scalable, decoupled operations
 - **Better Auth Integration**: Modern authentication system with session management and security features
 - **Redis Performance Layer**: High-performance caching, session management, and real-time features
 - **Server-Side Rendering (SSR)**: Optimal performance with Fresh framework
@@ -21,6 +22,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 - **Responsive Design**: Mobile-first layout using Tailwind CSS
 - **Type Safety**: Full TypeScript support throughout the application
 - **Database**: PostgreSQL with Drizzle ORM and Row-Level Security (RLS)
+- **Monitoring & Observability**: Comprehensive metrics, health checks, and structured logging
 
 ## 🚀 Quick Start
 
@@ -29,6 +31,7 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 - **Deno** (version 1.37 or later) - [Install Deno](https://deno.land/manual/getting_started/installation)
 - **PostgreSQL** (version 14 or later) - [Install PostgreSQL](https://www.postgresql.org/download/)
 - **Redis** (version 6 or later) - [Install Redis](https://redis.io/download)
+- **RabbitMQ** (version 3.8 or later) - [Install RabbitMQ](https://www.rabbitmq.com/download.html)
 - **Node.js** (for some build tools) - [Install Node.js](https://nodejs.org/)
 
 ### Installation
@@ -44,18 +47,22 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
    cp .env.example .env
    ```
 
-3. **Configure your database and Redis in `.env`:**
+3. **Configure your database, Redis, and RabbitMQ in `.env`:**
    ```env
    DATABASE_URL=postgresql://username:password@localhost:5432/simplycaster
    REDIS_HOST=localhost
    REDIS_PORT=6379
    REDIS_PASSWORD=your-redis-password
+   RABBITMQ_HOST=localhost
+   RABBITMQ_PORT=5672
+   RABBITMQ_USERNAME=guest
+   RABBITMQ_PASSWORD=guest
    JWT_SECRET=your-super-secret-jwt-key-here
    PASSWORD_PEPPER=your-password-pepper-here
    BASE_URL=http://localhost:8000
    ```
 
-4. **Set up the database and Redis:**
+4. **Set up the database, Redis, and RabbitMQ:**
    ```bash
    # Create the database
    createdb simplycaster
@@ -65,6 +72,12 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
    
    # Start Redis server (if not running as service)
    redis-server
+   
+   # Start RabbitMQ server (if not running as service)
+   rabbitmq-server
+   
+   # Enable RabbitMQ Management Plugin (optional, for web UI)
+   rabbitmq-plugins enable rabbitmq_management
    ```
 
 5. **Install dependencies and start development server:**
@@ -84,6 +97,11 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
    - Login with your admin account
    - Navigate to the dashboard
    - Create your first recording room
+
+3. **Monitor system health (optional):**
+   - RabbitMQ Management UI: [http://localhost:15672](http://localhost:15672) (guest/guest)
+   - Application health checks: [http://localhost:8000/api/health/rabbitmq](http://localhost:8000/api/health/rabbitmq)
+   - Metrics dashboard: [http://localhost:8000/api/metrics/rabbitmq/summary](http://localhost:8000/api/metrics/rabbitmq/summary)
 
 ## 🛠️ Development
 
@@ -296,6 +314,10 @@ SimplyCaster is designed for self-hosted deployment:
 | `BASE_URL` | Application base URL | `http://localhost:8000` | ✅ |
 | `NODE_ENV` | Environment mode | `development` | ❌ |
 | `PORT` | Server port | `8000` | ❌ |
+| `RABBITMQ_HOST` | RabbitMQ server hostname | `localhost` | ✅ |
+| `RABBITMQ_PORT` | RabbitMQ server port | `5672` | ✅ |
+| `RABBITMQ_USERNAME` | RabbitMQ username | `guest` | ✅ |
+| `RABBITMQ_PASSWORD` | RabbitMQ password | `guest` | ✅ |
 
 ### Redis Configuration Variables
 
@@ -307,6 +329,28 @@ SimplyCaster is designed for self-hosted deployment:
 | `REDIS_ENABLE_MONITORING` | Enable Redis monitoring | `true` |
 | `REDIS_CACHE_TTL_DEFAULT` | Default cache TTL (seconds) | `3600` |
 | `REDIS_SESSION_TTL` | Session TTL (seconds) | `86400` |
+
+### RabbitMQ Configuration Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RABBITMQ_HOST` | RabbitMQ server hostname | `localhost` |
+| `RABBITMQ_PORT` | RabbitMQ server port | `5672` |
+| `RABBITMQ_USERNAME` | RabbitMQ username | `guest` |
+| `RABBITMQ_PASSWORD` | RabbitMQ password | `guest` |
+| `RABBITMQ_VHOST` | RabbitMQ virtual host | `/` |
+| `RABBITMQ_CONNECTION_TIMEOUT` | Connection timeout (ms) | `10000` |
+| `RABBITMQ_HEARTBEAT_INTERVAL` | Heartbeat interval (seconds) | `60` |
+| `RABBITMQ_MAX_RETRIES` | Maximum retry attempts | `3` |
+| `RABBITMQ_RETRY_DELAY` | Retry delay (ms) | `1000` |
+| `RABBITMQ_CIRCUIT_BREAKER_ENABLED` | Enable circuit breaker | `true` |
+| `RABBITMQ_FAILURE_THRESHOLD` | Circuit breaker failure threshold | `5` |
+| `RABBITMQ_RECOVERY_TIMEOUT` | Circuit breaker recovery timeout (ms) | `30000` |
+| `RABBITMQ_QUEUE_TTL` | Queue message TTL (ms) | `86400000` |
+| `RABBITMQ_MAX_QUEUE_DEPTH` | Maximum queue depth | `1000` |
+| `RABBITMQ_MAX_DLQ_DEPTH` | Maximum dead letter queue depth | `100` |
+| `RABBITMQ_METRICS_ENABLED` | Enable metrics collection | `true` |
+| `RABBITMQ_HEALTH_CHECK_INTERVAL` | Health check interval (ms) | `30000` |
 
 ### Database Configuration
 
@@ -326,6 +370,136 @@ SimplyCaster uses Redis for high-performance caching and real-time features:
 - **Pub/Sub Messaging** for real-time room updates
 - **Performance Monitoring** with comprehensive metrics and alerting
 - **Operation Logging** with structured audit trails
+
+### RabbitMQ Event-Driven Architecture
+
+SimplyCaster implements a comprehensive **event-driven architecture** using **RabbitMQ** for reliable, scalable domain event publishing and processing.
+
+#### Domain Events System
+
+The application publishes domain events for all significant business operations, enabling:
+- **Decoupled Architecture**: Services communicate through events rather than direct calls
+- **Audit Trail**: Complete history of all business operations
+- **Integration**: Easy integration with external systems and microservices
+- **Scalability**: Asynchronous processing for improved performance
+- **Reliability**: Guaranteed message delivery with retry mechanisms
+
+#### Published Domain Events
+
+SimplyCaster publishes the following domain events:
+
+**Room Events:**
+- `room.created` - When a new recording room is created
+- `room.closed` - When a room is closed and all participants are removed
+- `room.updated` - When room settings or metadata are modified
+
+**Recording Events:**
+- `recording.started` - When audio recording begins in a room
+- `recording.stopped` - When recording is manually stopped
+- `recording.completed` - When recording processing is finished successfully
+- `recording.failed` - When recording processing encounters an error
+
+**User Events:**
+- `user.joined` - When a guest joins a room
+- `user.left` - When a participant leaves a room voluntarily
+- `user.kicked` - When a host removes a participant from a room
+
+**Authentication Events:**
+- `auth.login` - When a user successfully authenticates
+- `auth.logout` - When a user logs out or session expires
+- `user.created` - When a new user account is created
+- `user.updated` - When user profile information is modified
+
+**Feed Events:**
+- `feed.published` - When a podcast episode is published to the RSS feed
+- `feed.updated` - When episode metadata is modified
+- `feed.deleted` - When an episode is removed from the feed
+
+#### Event Structure
+
+All domain events follow a standardized schema:
+
+```typescript
+interface DomainEvent {
+  id: string;              // Unique event identifier (UUID)
+  type: string;            // Event type (e.g., 'room.created')
+  version: string;         // Schema version for compatibility
+  timestamp: Date;         // When the event occurred
+  correlationId?: string;  // For tracing across services
+  userId?: string;         // User who triggered the event
+  sessionId?: string;      // Session tracking
+  data: Record<string, unknown>; // Event payload
+  metadata?: EventMetadata;      // Additional context
+}
+```
+
+#### RabbitMQ Infrastructure
+
+**Queue Topology:**
+- **Topic Exchange**: Routes events based on routing keys (e.g., `room.*`, `recording.*`)
+- **Durable Queues**: Ensures message persistence across server restarts
+- **Dead Letter Queues**: Handles failed message processing with retry logic
+- **Message TTL**: Automatic cleanup of old messages
+
+**Reliability Features:**
+- **Circuit Breaker**: Prevents cascade failures when RabbitMQ is unavailable
+- **Retry Logic**: Exponential backoff for failed message publishing
+- **Connection Management**: Automatic reconnection with health monitoring
+- **Message Confirmation**: Publisher confirms for guaranteed delivery
+
+**Monitoring & Observability:**
+- **Prometheus Metrics**: Comprehensive metrics for monitoring and alerting
+- **Health Checks**: Real-time health status for queues and connections
+- **Performance Tracking**: Latency, throughput, and error rate monitoring
+- **Structured Logging**: Detailed logs for debugging and audit trails
+
+#### RabbitMQ Configuration
+
+```env
+# RabbitMQ Connection
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_USERNAME=guest
+RABBITMQ_PASSWORD=guest
+RABBITMQ_VHOST=/
+
+# Performance & Reliability
+RABBITMQ_CONNECTION_TIMEOUT=10000
+RABBITMQ_HEARTBEAT_INTERVAL=60
+RABBITMQ_MAX_RETRIES=3
+RABBITMQ_RETRY_DELAY=1000
+
+# Circuit Breaker
+RABBITMQ_CIRCUIT_BREAKER_ENABLED=true
+RABBITMQ_FAILURE_THRESHOLD=5
+RABBITMQ_RECOVERY_TIMEOUT=30000
+
+# Queue Configuration
+RABBITMQ_QUEUE_TTL=86400000        # 24 hours
+RABBITMQ_MAX_QUEUE_DEPTH=1000
+RABBITMQ_MAX_DLQ_DEPTH=100
+
+# Monitoring
+RABBITMQ_METRICS_ENABLED=true
+RABBITMQ_HEALTH_CHECK_INTERVAL=30000
+```
+
+#### RabbitMQ APIs
+
+- **Health Check**: `GET /api/health/rabbitmq` - Overall RabbitMQ system health
+- **Queue Health**: `GET /api/health/rabbitmq/queues` - Detailed queue status and metrics
+- **Circuit Breaker**: `GET /api/health/rabbitmq/circuit-breaker` - Circuit breaker state and health
+- **Metrics**: `GET /api/metrics/rabbitmq` - Prometheus-formatted metrics for monitoring
+- **Metrics Summary**: `GET /api/metrics/rabbitmq/summary` - JSON metrics summary for dashboards
+
+#### Event Processing
+
+Events are processed asynchronously with the following guarantees:
+- **At-least-once delivery**: Events are guaranteed to be delivered
+- **Ordered processing**: Events for the same entity are processed in order
+- **Idempotent handling**: Duplicate events are handled gracefully
+- **Error recovery**: Failed events are retried with exponential backoff
+- **Dead letter handling**: Permanently failed events are stored for manual review
 
 ## 🤝 Contributing
 

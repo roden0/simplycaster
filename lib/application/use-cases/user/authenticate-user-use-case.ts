@@ -11,6 +11,9 @@ import { TokenService } from '../../../domain/services/token-service.ts';
 import { User, UpdateUserData, UserDomain } from '../../../domain/entities/user.ts';
 import { Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, AuthenticationError, BusinessRuleError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, AuthEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for user authentication
@@ -43,7 +46,8 @@ export class AuthenticateUserUseCase {
   constructor(
     private userRepository: UserRepository,
     private passwordService: PasswordService,
-    private tokenService: TokenService
+    private tokenService: TokenService,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -126,7 +130,36 @@ export class AuthenticateUserUseCase {
         return Err(expirationResult.error);
       }
 
-      // 10. Prepare success response
+      // 10. Publish user login event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const authEventData: AuthEventData = {
+            userId: user.id,
+            email: user.email,
+            role: user.role as 'admin' | 'host' | 'guest',
+            ipAddress: input.ipAddress
+          };
+
+          const userLoginEvent = createBaseEvent(
+            EventType.USER_LOGIN,
+            authEventData,
+            {
+              correlationId,
+              userId: user.id,
+              priority: 'high',
+              source: 'auth-service'
+            }
+          );
+
+          await this.eventPublisher.publish(userLoginEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the authentication
+          console.error('Failed to publish user login event:', error);
+        }
+      }
+
+      // 11. Prepare success response
       const output: AuthenticateUserOutput = {
         user: resetResult.success ? resetResult.data : user,
         token: tokenResult.data,

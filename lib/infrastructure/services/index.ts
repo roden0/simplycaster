@@ -26,3 +26,15 @@ export type { RateLimitConfigManager } from './rate-limit-config-manager.ts';
 export { RealtimeServiceImpl } from './realtime-service-impl.ts';
 export { parseRedisConfig, parseCacheConfig, parseRateLimitConfig } from './redis-config.ts';
 export type { RedisConfig, CacheConfig, RateLimitConfig } from './redis-config.ts';
+
+// RabbitMQ services
+export { RabbitMQConnectionManager } from './rabbitmq-connection-manager.ts';
+export { RabbitMQEventPublisher, createRabbitMQEventPublisher } from './rabbitmq-event-publisher.ts';
+export { 
+  RabbitMQCircuitBreaker, 
+  RabbitMQCircuitBreakerWithFallback,
+  createCircuitBreaker,
+  createCircuitBreakerWithFallback,
+  CircuitBreakerState
+} from './rabbitmq-circuit-breaker.ts';
+export { createRabbitMQConfig, createDefaultExchanges, RABBITMQ_ENV_VARS } from './rabbitmq-config.ts';

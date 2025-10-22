@@ -10,6 +10,9 @@ import { UserRepository } from '../../../domain/repositories/user-repository.ts'
 import { Room, CreateRoomData, RoomDomain } from '../../../domain/entities/room.ts';
 import { UserRole, RoomStatus, Result, Ok, Err } from '../../../domain/types/common.ts';
 import { ValidationError, BusinessRuleError, EntityNotFoundError } from '../../../domain/errors/index.ts';
+import { EventPublisher } from '../../../domain/types/events.ts';
+import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
+import { EventType, RoomEventData } from '../../../domain/types/events.ts';
 
 /**
  * Input data for creating a room
@@ -36,7 +39,8 @@ export interface CreateRoomOutput {
 export class CreateRoomUseCase {
   constructor(
     private roomRepository: RoomRepository,
-    private userRepository: UserRepository
+    private userRepository: UserRepository,
+    private eventPublisher?: EventPublisher
   ) {}
 
   /**
@@ -96,7 +100,37 @@ export class CreateRoomUseCase {
         return Err(createResult.error);
       }
 
-      // 9. Prepare success response
+      // 9. Publish room created event
+      if (this.eventPublisher) {
+        try {
+          const correlationId = generateCorrelationId();
+          const roomEventData: RoomEventData = {
+            roomId: createResult.data.id,
+            roomName: createResult.data.name || `Room-${createResult.data.id}`,
+            hostId: createResult.data.hostId,
+            maxParticipants: createResult.data.maxParticipants,
+            allowVideo: createResult.data.allowVideo
+          };
+
+          const roomCreatedEvent = createBaseEvent(
+            EventType.ROOM_CREATED,
+            roomEventData,
+            {
+              correlationId,
+              userId: input.hostId,
+              priority: 'normal',
+              source: 'room-service'
+            }
+          );
+
+          await this.eventPublisher.publish(roomCreatedEvent);
+        } catch (error) {
+          // Log event publishing error but don't fail the room creation
+          console.error('Failed to publish room created event:', error);
+        }
+      }
+
+      // 10. Prepare success response
       const output: CreateRoomOutput = {
         room: createResult.data,
         message: `Room "${createResult.data.name}" created successfully`
