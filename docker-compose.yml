@@ -1,71 +1,44 @@
-services:
-  db:
-    image: postgres:18
-    environment:
-      POSTGRES_USER_FILE: /run/secrets/db_user
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-      POSTGRES_DB_FILE: /run/secrets/db_name
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d
-    secrets:
-      - db_user
-      - db_password
-      - db_name
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/db_user) -d $(cat /run/secrets/db_name) || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+version: '3.8'
 
-  api:
-    image: denoland/deno:2.1.4
-    working_dir: /app
-    volumes:
-      - ".:/app"
-      - "uploads:/app/uploads"
+services:
+  app:
+    build: .
     ports:
       - "8000:8000"
-    command: deno run --allow-net --allow-env --allow-read --allow-write --watch main.ts
     environment:
-      PORT: 8000
-      NODE_ENV: development
-      DB_HOST: db
-      DB_PORT: 5432
-    secrets:
-      - db_user
-      - db_password
-      - db_name
-      - jwt_secret
-      - pepper_secret
+      - DATABASE_URL=postgresql://simplycaster:password@db:5432/simplycaster
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - PASSWORD_PEPPER=your-password-pepper-change-in-production
+      - BASE_URL=http://localhost:8000
+      - NODE_ENV=production
     depends_on:
-      db:
-        condition: service_healthy
-    develop:
-      watch:
-        - action: sync
-          path: .
-          target: /app
-          ignore:
-            - node_modules/
-            - .git/
-            - uploads/
+      - db
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
 
-secrets:
-  db_user:
-    file: ./secrets/db_user.txt
-  db_password:
-    file: ./secrets/db_password.txt
-  db_name:
-    file: ./secrets/db_name.txt
-  jwt_secret:
-    file: ./secrets/jwt_secret.txt
-  pepper_secret:
-    file: ./secrets/pepper_secret.txt
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=simplycaster
+      - POSTGRES_USER=simplycaster
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
 
 volumes:
   postgres_data:
-  uploads:
+  redis_data:

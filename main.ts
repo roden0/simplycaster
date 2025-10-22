@@ -1,8 +1,17 @@
 import { App, staticFiles } from "fresh";
 import { define, type State } from "./utils.ts";
-import { checkDatabaseHealth } from "./database/connection.ts";
+import { checkDatabaseHealth, db } from "./database/connection.ts";
+import { initializeContainer } from "./lib/container/registry.ts";
 
 export const app = new App<State>();
+
+// Initialize dependency injection container
+console.log("🔧 Initializing dependency injection container...");
+const container = initializeContainer(db);
+console.log("✅ Dependency injection container initialized");
+
+// Make container available globally for routes
+(globalThis as any).serviceContainer = container;
 
 // Database health check middleware
 app.use(async (ctx) => {
@@ -14,7 +23,7 @@ app.use(async (ctx) => {
   // Check database connectivity on startup
   const isHealthy = await checkDatabaseHealth();
   if (!isHealthy) {
-    console.warn("Database connection is not healthy");
+    console.warn("⚠️ Database connection is not healthy");
   }
   
   return await ctx.next();
