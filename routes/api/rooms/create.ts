@@ -101,7 +101,7 @@ export const handler = define.handlers({
       }
 
       // Success response
-      const { room, message } = result.data;
+      const { room, message } = result.data;\n      \n      // Initialize WebRTC capabilities for the room\n      try {\n        const { getWebRTCServiceManager } = await import(\"../../../lib/webrtc/index.ts\");\n        const serviceManager = getWebRTCServiceManager();\n        const roomCoordinator = serviceManager.getRoomCoordinator();\n        \n        // Initialize WebRTC session for the room\n        await roomCoordinator.initializeRoom(room.id, {\n          hostId: room.hostId,\n          maxParticipants: room.maxParticipants,\n          allowVideo: room.allowVideo,\n          roomName: room.name\n        });\n        \n        console.log(`WebRTC capabilities initialized for room ${room.id}`);\n      } catch (webrtcError) {\n        console.error(\"Error initializing WebRTC capabilities:\", webrtcError);\n        // Don't fail the request if WebRTC initialization fails\n      }
       
       // Warm the cache with the newly created room
       try {

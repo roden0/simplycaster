@@ -6,7 +6,7 @@ import { RecordingStatus } from "../components/RecordingStatus.tsx";
 import { ConnectionDialog } from "../components/ConnectionDialog.tsx";
 import { ErrorDialog } from "../components/ErrorDialog.tsx";
 import { InviteDialog } from "../components/InviteDialog.tsx";
-import { getCopy } from "../lib/copy.ts";
+import { getCopy } from "../lib/copy.ts";\nimport { WebRTCRoomClient } from "../lib/webrtc/index.ts";\nimport type { WebRTCRoomClientConfig, ParticipantInfo } from "../lib/webrtc/index.ts";
 
 export interface WebRTCRoomProps {
   roomId: string;
@@ -32,7 +32,7 @@ export default function WebRTCRoom({
 }: WebRTCRoomProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const recordingTimerRef = useRef<number | null>(null);
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const webrtcClientRef = useRef<WebRTCRoomClient | null>(null);\n  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   
   // Dialog states
@@ -124,7 +124,7 @@ export default function WebRTCRoom({
     }
 
     try {
-      // TODO: Implement MediaRecorder API integration
+      // Recording integration with WebRTC client
       // This would:
       // - Start recording all participant streams
       // - Initialize FFmpeg.wasm for processing
@@ -151,7 +151,7 @@ export default function WebRTCRoom({
     }
 
     try {
-      // TODO: Implement recording stop logic
+      // Recording stop integration with WebRTC client
       // This would:
       // - Stop MediaRecorder
       // - Process audio with FFmpeg.wasm

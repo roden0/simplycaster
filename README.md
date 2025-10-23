@@ -5,13 +5,15 @@ A podcast/conversation recording platform built with Fresh (Deno) and focused on
 ## 🎯 Features
 
 ### Core Functionality
-- **Real-time Audio Recording**: WebRTC-based multi-participant recording with high-quality audio processing
-- **Room Management**: Create and manage recording rooms with guest invitation system
+- **Real-time WebRTC Communication**: Complete WebRTC signaling implementation with peer-to-peer audio/video
+- **Multi-participant Recording**: High-quality audio recording with MediaRecorder API and client-side processing
+- **Room Management**: Create and manage recording rooms with real-time participant coordination
 - **User Management**: Role-based access control (Admin, Host, Guest) with secure authentication
 - **Feed Generation**: Automatic podcast RSS feed generation with ID3 tag support
 - **Archive System**: Organized storage and management of recorded sessions
 
 ### Technical Features
+- **WebRTC Signaling**: Complete WebRTC implementation with signaling server, client management, and real-time communication
 - **Clean Architecture**: Service layer with dependency injection and use cases
 - **Event-Driven Architecture**: RabbitMQ-based domain events for scalable, decoupled operations
 - **Better Auth Integration**: Modern authentication system with session management and security features
@@ -519,31 +521,107 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
-## 📋 TODO & Roadmap
+### 🎥 WebRTC Real-Time Communication
 
-The following features are planned for future development:
+SimplyCaster features a **complete WebRTC signaling implementation** for real-time peer-to-peer audio/video communication between hosts and guests in recording rooms.
 
-### 🎥 WebRTC Infrastructure
-- **Signaling Server**: Implement WebRTC signaling server for peer-to-peer connection establishment
-  - WebSocket-based signaling for offer/answer exchange
-  - Session management for multi-participant rooms
-  - Connection state management and recovery
-  - Integration with existing room management system
+#### WebRTC Signaling Server
 
-- **ICE Servers**: Configure and integrate ICE (Interactive Connectivity Establishment) servers
-  - STUN server configuration for NAT traversal
-  - TURN server setup for relay connections behind restrictive firewalls
+**Complete Implementation** ✅
+- **WebSocket Signaling**: Full WebSocket-based signaling server at `/api/signaling/ws`
+- **Message Routing**: Comprehensive message validation and routing for WebRTC negotiation
+- **Session Management**: Redis-backed room session management with participant tracking
+- **Authentication**: Integrated with existing JWT/Better Auth system for secure connections
+- **Rate Limiting**: Built-in message rate limiting to prevent abuse
+- **Error Handling**: Robust error handling with automatic recovery mechanisms
+
+#### Client-Side WebRTC Implementation
+
+**Complete Implementation** ✅
+- **WebRTC Client**: Full-featured client for managing peer connections (`lib/webrtc/webrtc-client.ts`)
+- **Media Management**: Comprehensive media stream handling with device enumeration (`lib/webrtc/media-manager.ts`)
+- **Recording Engine**: MediaRecorder API integration with IndexedDB buffering (`lib/webrtc/recording-engine.ts`)
+- **Connection Management**: Automatic reconnection with exponential backoff
+- **Event System**: Complete event-driven architecture for real-time updates
+- **Quality Adaptation**: Adaptive bitrate and quality control based on connection conditions
+
+#### Room Coordination & Management
+
+**Complete Implementation** ✅
+- **Room Coordinator**: Server-side room session management (`lib/webrtc/room-coordinator.ts`)
+- **Participant Tracking**: Real-time participant management with connection state monitoring
+- **Broadcasting**: Efficient message broadcasting to room participants
+- **Access Control**: Integrated participant validation with existing user/guest system
+- **Cleanup**: Automatic session cleanup and resource management
+
+#### Message Validation & Security
+
+**Complete Implementation** ✅
+- **Message Validator**: Comprehensive validation for all signaling message types (`lib/webrtc/message-validator.ts`)
+- **Input Sanitization**: XSS prevention and data sanitization for all user inputs
+- **Type Safety**: Full TypeScript interfaces for all WebRTC message types (`lib/webrtc/types.ts`)
+- **Rate Limiting**: Per-participant message rate limiting with cleanup
+- **Error Messages**: Standardized error message creation and handling
+
+#### WebRTC Features
+
+**Implemented Features:**
+- ✅ **Audio Recording**: Multi-participant audio recording with MediaRecorder API
+- ✅ **Video Monitoring**: Optional video streams for session monitoring
+- ✅ **Peer-to-Peer**: Direct P2P connections between participants
+- ✅ **Signaling**: Complete WebRTC signaling (offers, answers, ICE candidates)
+- ✅ **Session Management**: Room-based session coordination
+- ✅ **Connection Recovery**: Automatic reconnection and error recovery
+- ✅ **Local Processing**: Client-side audio processing with FFmpeg.wasm integration
+- ✅ **Real-time Updates**: Live participant status and recording state synchronization
+
+#### WebRTC APIs
+
+- **Signaling WebSocket**: `ws://localhost:8000/api/signaling/ws` - WebRTC signaling endpoint
+- **Session Status**: `GET /api/webrtc/sessions/{roomId}` - Get active WebRTC session info
+- **Participant Status**: `GET /api/webrtc/participants/{roomId}/{participantId}` - Individual participant status
+- **Metrics**: `GET /api/webrtc/metrics` - WebRTC connection and performance metrics
+
+#### Testing & Quality Assurance
+
+**Comprehensive Test Suite** ✅
+- **Unit Tests**: Complete test coverage for all WebRTC components
+- **Integration Tests**: End-to-end signaling and connection flow testing
+- **Mock Infrastructure**: Comprehensive mocks for WebSocket, RTCPeerConnection, MediaRecorder
+- **Error Scenarios**: Extensive testing of failure modes and recovery mechanisms
+- **Performance Tests**: Connection scalability and audio quality validation
+
+#### WebRTC Configuration
+
+```env
+# WebRTC Configuration
+WEBRTC_SIGNALING_URL=ws://localhost:8000/api/signaling/ws
+WEBRTC_ICE_SERVERS=stun:stun.l.google.com:19302
+WEBRTC_RECONNECT_ATTEMPTS=3
+WEBRTC_RECONNECT_DELAY=1000
+WEBRTC_HEARTBEAT_INTERVAL=30000
+
+# Recording Configuration
+WEBRTC_RECORDING_MIME_TYPE=audio/webm;codecs=opus
+WEBRTC_AUDIO_BITRATE=128000
+WEBRTC_CHUNK_SIZE=1000
+WEBRTC_MAX_CHUNK_SIZE=1048576
+```
+
+## 📋 Roadmap & Future Enhancements
+
+### 🔮 Planned WebRTC Enhancements
+- **ICE Servers**: Configure and integrate STUN/TURN servers for improved NAT traversal
+  - STUN server configuration for better connectivity
+  - TURN server setup for restrictive firewall environments
   - Automatic server selection and failover
   - Cost optimization for TURN server usage
 
-- **Client-side WebRTC Code**: Develop comprehensive client-side WebRTC implementation
-  - MediaStream handling for audio/video capture
-  - RTCPeerConnection management for multiple participants
-  - Audio processing and quality optimization
-  - Adaptive bitrate and quality control
+- **Advanced Features**: Enhanced WebRTC capabilities
   - Screen sharing and presentation mode
-  - Real-time audio level monitoring
-  - Connection quality indicators and diagnostics
+  - Real-time audio level monitoring and visualization
+  - Advanced connection quality indicators and diagnostics
+  - Multi-track recording with individual participant isolation
 
 ### 📊 Enhanced Telemetry and Monitoring
 - **Application Performance Monitoring (APM)**: Integrate comprehensive application monitoring

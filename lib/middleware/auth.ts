@@ -8,6 +8,8 @@ import { getService } from "../container/global.ts";
 import { ServiceKeys } from "../container/registry.ts";
 import { TokenService } from "../domain/services/token-service.ts";
 import { UserRepository } from "../domain/repositories/user-repository.ts";
+import { GuestRepository } from "../domain/repositories/guest-repository.ts";
+import { RoomRepository } from "../domain/repositories/room-repository.ts";
 import { SessionService } from "../domain/services/session-service.ts";
 
 export interface AuthenticatedUser {
@@ -299,4 +301,94 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   });
   
   return cookies;
+}
+
+/**
+ * Authenticate WebSocket connection with support for both user tokens and guest tokens
+ */
+export async function authenticateWebSocketConnection(req: Request): Promise<{
+  participantId: string;
+  participantName: string;
+  participantType: 'host' | 'guest';
+  roomId: string;
+} | null> {
+  try {
+    // Try standard authentication first (for hosts/admins)
+    const user = await authenticateRequest(req);
+    if (user) {
+      // Extract room ID from URL or query parameters
+      const url = new URL(req.url);
+      const roomId = url.searchParams.get('roomId');
+      
+      if (!roomId) {
+        return null;
+      }
+
+      // Verify user has access to this room
+      const roomRepository = await getService<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
+      const roomResult = await roomRepository.findById(roomId);
+      
+      if (!roomResult.success || !roomResult.data) {
+        return null;
+      }
+
+      const room = roomResult.data;
+      
+      // Check if user is the host or admin
+      if (user.role === 'admin' || room.hostId === user.id) {
+        return {
+          participantId: user.id,
+          participantName: user.email,
+          participantType: user.role === 'host' ? 'host' : 'host', // Treat admin as host for WebRTC
+          roomId
+        };
+      }
+    }
+
+    // Try guest token authentication
+    const url = new URL(req.url);
+    const token = url.searchParams.get('token');
+    const roomId = url.searchParams.get('roomId');
+    
+    if (!token || !roomId) {
+      return null;
+    }
+
+    // Hash the token to match stored hash
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const tokenHash = Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    // Find guest by token hash
+    const guestRepository = await getService<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
+    const guestResult = await guestRepository.findByTokenHash(tokenHash);
+    
+    if (!guestResult.success || !guestResult.data) {
+      return null;
+    }
+
+    const guest = guestResult.data;
+    
+    // Import GuestDomain for validation
+    const { GuestDomain } = await import("../domain/entities/guest.ts");
+    
+    // Verify guest is active and token is not expired
+    if (!GuestDomain.isActive(guest) || guest.roomId !== roomId) {
+      return null;
+    }
+
+    return {
+      participantId: guest.id,
+      participantName: guest.displayName,
+      participantType: 'guest',
+      roomId: guest.roomId
+    };
+
+  } catch (error) {
+    console.error('WebSocket authentication error:', error);
+    return null;
+  }
 }

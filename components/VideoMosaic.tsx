@@ -1,4 +1,4 @@
-// Video mosaic component for displaying participant video streams
+// Video mosaic component for displaying participant video streams\nimport { useEffect, useRef } from \"preact/hooks\";
 
 export interface Participant {
   id: string;
