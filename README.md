@@ -503,24 +503,6 @@ Events are processed asynchronously with the following guarantees:
 - **Error recovery**: Failed events are retried with exponential backoff
 - **Dead letter handling**: Permanently failed events are stored for manual review
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Quick Contribution Guide
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Run tests: `deno task test`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
 ### 🎥 WebRTC Real-Time Communication
 
 SimplyCaster features a **complete WebRTC signaling implementation** for real-time peer-to-peer audio/video communication between hosts and guests in recording rooms.
@@ -651,10 +633,28 @@ WEBRTC_MAX_CHUNK_SIZE=1048576
 3. **Phase 3**: Client-side WebRTC implementation and audio processing
 4. **Phase 4**: Enhanced telemetry and monitoring systems
 
-### 🤝 Contributing to Roadmap
-We welcome contributions and feedback on these planned features:
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
 - Review and discuss roadmap items in [GitHub Discussions](https://github.com/your-username/simplycaster/discussions)
 - Submit feature requests and improvements via [GitHub Issues](https://github.com/your-username/simplycaster/issues)
+
+### Quick Contribution Guide
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and add tests
+4. Run tests: `deno task test`
+5. Commit your changes: `git commit -m 'Add amazing feature'`
+6. Push to the branch: `git push origin feature/amazing-feature`
+7. Open a Pull Request
+
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 
 ## 🆘 Support
