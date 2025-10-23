@@ -279,3 +279,6 @@ export interface RegistrySnapshot {
  * Default global validator registry instance
  */
 export const defaultValidatorRegistry = new ValidatorRegistry();
+
+// Note: Built-in validators are registered lazily when first accessed
+// to avoid circular dependencies. See registerBuiltInValidators in validators.ts

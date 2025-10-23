@@ -124,6 +124,9 @@ temp/
 *.swp
 *.swo
 *~
+#Kiro
+.kiro/
+
 
 # OS generated files
 .DS_Store
@@ -148,6 +151,3 @@ database/migrations/
 # Temporary files
 tmp/
 temp/
-
-#Kiro
-.kiro/

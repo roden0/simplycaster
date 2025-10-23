@@ -96,7 +96,7 @@ export class ValidationEngine {
           field: context.fieldPath,
           code: 'validationError',
           message: this.copyManager('errors.validationError'),
-          params: { error: error.message }
+          params: { error: error instanceof Error ? error.message : String(error) }
         });
       }
     }
@@ -171,7 +171,7 @@ export class ValidationEngine {
           field: fieldPath,
           code: 'validationError',
           message: this.copyManager('errors.validationError'),
-          params: { field: fieldPath, error: error.message }
+          params: { field: fieldPath, error: error instanceof Error ? error.message : String(error) }
         });
       }
     }
@@ -203,7 +203,7 @@ export class ValidationEngine {
             field: '',
             code: 'validationError',
             message: this.copyManager('errors.validationError'),
-            params: { validator: validatorConfig.type, error: error.message }
+            params: { validator: validatorConfig.type, error: error instanceof Error ? error.message : String(error) }
           });
         }
       }
@@ -304,18 +304,19 @@ export class ValidationEngine {
     validator: any,
     config: SerializableValidator
   ): (value: any, context: ValidationContext) => Promise<ValidationResult> {
-    // If validator is a factory function (takes parameters)
-    if (config.params && typeof validator === 'function') {
+    // If validator is a factory function (takes parameters or no parameters)
+    if (typeof validator === 'function') {
       try {
-        // Try to call validator as factory with params
-        const validatorInstance = validator(config.params);
+        // Try to call validator as factory with params (or empty object if no params)
+        const params = config.params || {};
+        const validatorInstance = validator(params);
         if (typeof validatorInstance === 'function') {
           return async (value: any, context: ValidationContext) => {
             const result = await validatorInstance(value, context);
             
             // Override message if custom message provided
             if (config.message && !result.success) {
-              result.errors = result.errors.map(error => ({
+              result.errors = result.errors.map((error: ValidationError) => ({
                 ...error,
                 message: config.message!
               }));
@@ -329,13 +330,13 @@ export class ValidationEngine {
       }
     }
 
-    // Direct validator function
+    // Direct validator function (for non-factory validators like required, email)
     return async (value: any, context: ValidationContext) => {
       const result = await validator(value, context);
       
       // Override message if custom message provided
       if (config.message && !result.success) {
-        result.errors = result.errors.map(error => ({
+        result.errors = result.errors.map((error: ValidationError) => ({
           ...error,
           message: config.message!
         }));
