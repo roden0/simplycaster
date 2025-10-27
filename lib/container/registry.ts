@@ -65,6 +65,15 @@ import { RedisHealthService } from '../infrastructure/services/redis-health-serv
 import { RedisLogger } from '../infrastructure/services/redis-logger.ts';
 import { RedisServiceWithLogging } from '../infrastructure/services/redis-service-with-logging.ts';
 
+// WebRTC services
+import { IICEServerService, createICEServerService } from '../webrtc/ice-server-service.ts';
+import { createTurnCredentialService } from '../webrtc/turn-credential-service.ts';
+import { IConnectionAnalyticsService, createConnectionAnalyticsService } from '../webrtc/connection-analytics-service.ts';
+import { ICoturnHealthService, createCoturnHealthService } from '../webrtc/coturn-health-service.ts';
+import { ITurnSecurityService, createTurnSecurityService } from '../webrtc/turn-security-service.ts';
+import { ISecureCredentialManager, createSecureCredentialManager } from '../webrtc/secure-credential-manager.ts';
+import { IEnvironmentConfigService, createEnvironmentConfigService } from '../webrtc/environment-config-service.ts';
+
 import {
   CreateUserUseCase,
   AuthenticateUserUseCase,
@@ -142,6 +151,15 @@ export const ServiceKeys = {
   REDIS_HEALTH_SERVICE: 'redisHealthService',
   REDIS_LOGGER: 'redisLogger',
   REDIS_SERVICE_WITH_LOGGING: 'redisServiceWithLogging',
+  
+  // WebRTC Services
+  ICE_SERVER_SERVICE: 'iceServerService',
+  TURN_CREDENTIAL_SERVICE: 'turnCredentialService',
+  CONNECTION_ANALYTICS_SERVICE: 'connectionAnalyticsService',
+  COTURN_HEALTH_SERVICE: 'coturnHealthService',
+  TURN_SECURITY_SERVICE: 'turnSecurityService',
+  SECURE_CREDENTIAL_MANAGER: 'secureCredentialManager',
+  ENVIRONMENT_CONFIG_SERVICE: 'environmentConfigService',
   
   // Use Cases
   CREATE_USER_USE_CASE: 'createUserUseCase',
@@ -420,6 +438,36 @@ export function registerServices(container: Container, config: ServiceRegistryCo
     const logger = container.get<RedisLogger>(ServiceKeys.REDIS_LOGGER);
     const monitoring = container.get<RedisMonitoringService>(ServiceKeys.REDIS_MONITORING_SERVICE);
     return new RedisServiceWithLogging(baseService, logger, monitoring);
+  });
+
+  // Register WebRTC services
+  container.register(ServiceKeys.TURN_CREDENTIAL_SERVICE, () => {
+    return createTurnCredentialService();
+  });
+
+  container.register<IICEServerService>(ServiceKeys.ICE_SERVER_SERVICE, () => {
+    const turnCredentialService = container.getSync(ServiceKeys.TURN_CREDENTIAL_SERVICE);
+    return createICEServerService(turnCredentialService);
+  });
+
+  container.register<IConnectionAnalyticsService>(ServiceKeys.CONNECTION_ANALYTICS_SERVICE, () => {
+    return createConnectionAnalyticsService();
+  });
+
+  container.register<ICoturnHealthService>(ServiceKeys.COTURN_HEALTH_SERVICE, () => {
+    return createCoturnHealthService();
+  });
+
+  container.register<ITurnSecurityService>(ServiceKeys.TURN_SECURITY_SERVICE, () => {
+    return createTurnSecurityService();
+  });
+
+  container.register<ISecureCredentialManager>(ServiceKeys.SECURE_CREDENTIAL_MANAGER, () => {
+    return createSecureCredentialManager();
+  });
+
+  container.register<IEnvironmentConfigService>(ServiceKeys.ENVIRONMENT_CONFIG_SERVICE, () => {
+    return createEnvironmentConfigService();
   });
 
   // Register use cases with their dependencies

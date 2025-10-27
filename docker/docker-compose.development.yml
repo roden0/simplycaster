@@ -1,0 +1,120 @@
+# Docker Compose Configuration for Development Environment
+# SimplyCaster with COTURN ICE Server Integration
+
+version: '3.8'
+
+services:
+  # SimplyCaster Application
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=development
+      - ENVIRONMENT=development
+    env_file:
+      - ../config/environments/development.env
+    volumes:
+      - ../:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - coturn
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: simplycast_dev
+      POSTGRES_USER: simplycast
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ../database/init:/docker-entrypoint-initdb.d
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # COTURN ICE Server
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-65535:49152-65535/udp"
+    environment:
+      - COTURN_HOST=localhost
+      - COTURN_PORT=3478
+      - COTURN_REALM=simplycast.local
+      - COTURN_SECRET=your-development-secret-key-at-least-32-chars-long
+      - COTURN_MIN_PORT=49152
+      - COTURN_MAX_PORT=65535
+      - COTURN_LOG_LEVEL=4
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - coturn_dev_logs:/var/log/coturn
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+    command: >
+      turnserver
+      -c /etc/coturn/turnserver.conf
+      -v
+      --log-file=/var/log/coturn/turnserver.log
+      --pidfile=/var/run/turnserver.pid
+
+  # Development Tools
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    networks:
+      - simplycast-dev
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  coturn_dev_logs:
+    driver: local
+
+networks:
+  simplycast-dev:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

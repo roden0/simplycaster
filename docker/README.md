@@ -62,6 +62,12 @@ This directory contains Docker configuration for SimplyCaster development and pr
 - **Port:** 8080
 - **Purpose:** Database administration interface
 
+### Coturn ICE Server (coturn)
+- **Image:** Custom build based on coturn/coturn:4.6.2-alpine
+- **Ports:** 3478 (STUN/TURN), 5349 (TURNS), 49152-65535 (relay range)
+- **Purpose:** WebRTC NAT traversal for peer-to-peer connections
+- **Configuration:** See `docker/coturn/README.md` for details
+
 ## Database Management
 
 ### Migrations
@@ -95,6 +101,14 @@ docker-compose logs db
 - `NODE_ENV`: Set to "development"
 - `PORT`: Application port (8000)
 - `LOG_LEVEL`: Logging level (debug for development)
+
+### Coturn ICE Server
+- `COTURN_SECRET`: Shared secret for TURN authentication
+- `COTURN_REALM`: TURN realm (default: simplycast.local)
+- `COTURN_EXTERNAL_IP`: External IP for NAT traversal (auto-detected if empty)
+- `COTURN_LOG_LEVEL`: Coturn logging level (0-4, default: 3)
+- `COTURN_MIN_PORT`: Minimum relay port (default: 49152)
+- `COTURN_MAX_PORT`: Maximum relay port (default: 49252)
 
 ### Production
 - Use environment-specific values

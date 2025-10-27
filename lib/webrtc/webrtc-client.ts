@@ -733,4 +733,23 @@ export class WebRTCClient {
   getLocalStream(): MediaStream | null {
     return this.localStream;
   }
+
+  /**
+   * Update ICE server configuration
+   */
+  updateICEServers(iceServers: RTCIceServer[]): void {
+    this.config.iceServers = [...iceServers];
+    console.log(`Updated ICE server configuration with ${iceServers.length} servers`);
+    
+    // Note: Existing peer connections will continue to use their original ICE servers
+    // New peer connections will use the updated configuration
+    // To update existing connections, they would need to be recreated or use restartIce()
+  }
+
+  /**
+   * Get current ICE server configuration
+   */
+  getICEServers(): RTCIceServer[] {
+    return [...this.config.iceServers];
+  }
 }

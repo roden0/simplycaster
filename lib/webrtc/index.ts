@@ -77,8 +77,9 @@ export {
 } from './message-validator.ts';
 
 // Export error codes
-export { SignalingErrorCode } from './types.ts';// A
-dditional client-side components
+export { SignalingErrorCode } from './types.ts';
+
+// Additional client-side components
 export { MediaStreamManager } from './media-stream-manager.ts';
 export type {
   AudioProcessingOptions,
@@ -92,29 +93,33 @@ export type {
   WebRTCRoomClientConfig,
   WebRTCRoomClientEvents,
   ParticipantInfo as RoomParticipantInfo
-} from './webrtc-room-client.ts';export { 
-AudioProcessor } from './audio-processor.ts';
+} from './webrtc-room-client.ts';
+
+export { AudioProcessor } from './audio-processor.ts';
 export type {
   AudioProcessingConfig,
   ProcessingProgress,
   AudioProcessingResult,
   AudioProcessorEvents
-} from './audio-processor.ts';expor
-t { UploadManager } from './upload-manager.ts';
+} from './audio-processor.ts';
+
+export { UploadManager } from './upload-manager.ts';
 export type {
   UploadConfig,
   UploadProgress,
   UploadResult,
   UploadManagerEvents
-} from './upload-manager.ts';expo
-rt { WebRTCErrorHandler, WebRTCError } from './error-handler.ts';
+} from './upload-manager.ts';
+
+export { WebRTCErrorHandler, WebRTCError } from './error-handler.ts';
 export type {
   ErrorRecoveryStrategy,
   ErrorContext,
   RecoveryAction,
   ErrorHandlerEvents
-} from './error-handler.ts';e
-xport { WebRTCMetricsCollector } from './metrics-collector.ts';
+} from './error-handler.ts';
+
+export { WebRTCMetricsCollector } from './metrics-collector.ts';
 export type {
   ConnectionMetrics,
   SignalingMetrics,
@@ -122,3 +127,48 @@ export type {
   AggregatedMetrics,
   MetricsCollectorEvents
 } from './metrics-collector.ts';
+
+// ICE Server and TURN credential services
+export { 
+  TurnCredentialService,
+  createTurnCredentialService
+} from './turn-credential-service.ts';
+export type {
+  ITurnCredentialService,
+  TurnCredentialConfig
+} from './turn-credential-service.ts';
+
+export {
+  ICEServerService,
+  createICEServerService
+} from './ice-server-service.ts';
+export type {
+  IICEServerService
+} from './ice-server-service.ts';
+
+// Export additional ICE server types
+export type {
+  ICEServerConfig,
+  TurnCredentials,
+  ICEServerEnvironmentConfig,
+  ConnectionQualityMetrics,
+  ICEConnectionInfo
+} from './types.ts';
+
+// Connection monitoring and error handling
+export {
+  ConnectionMonitor
+} from './connection-monitor.ts';
+export type {
+  ConnectionMonitorConfig,
+  ConnectionMonitorEvents
+} from './connection-monitor.ts';
+
+export {
+  ConnectionErrorHandler
+} from './connection-error-handler.ts';
+export type {
+  ConnectionErrorHandlerConfig,
+  ConnectionErrorHandlerEvents,
+  ConnectionAttemptInfo
+} from './connection-error-handler.ts';

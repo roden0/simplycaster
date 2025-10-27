@@ -15,6 +15,8 @@ import { RedisService } from "../domain/services/redis-service.ts";
 import { RoomDomain } from "../domain/entities/room.ts";
 import { GuestDomain } from "../domain/entities/guest.ts";
 import { Result, Ok, Err } from "../domain/types/common.ts";
+import { IICEServerService, ICEServerConfig } from "./ice-server-service.ts";
+import { IConnectionAnalyticsService, createConnectionAnalyticsService } from "./connection-analytics-service.ts";
 
 /**
  * WebRTC session data stored in Redis
@@ -33,6 +35,8 @@ export interface WebRTCSession {
   };
   isRecording: boolean;
   recordingStartedAt?: Date;
+  iceServerConfig?: ICEServerConfig[];
+  iceServerExpiresAt?: Date;
   createdAt: Date;
 }
 
@@ -53,20 +57,29 @@ export interface Participant {
  */
 export class RoomCoordinator {
   private redisService: RedisService | null = null;
+  private iceServerService: IICEServerService | null = null;
+  private analyticsService: IConnectionAnalyticsService;
   private activeConnections = new Map<string, WebSocket>(); // connectionId -> WebSocket
   private connectionToParticipant = new Map<string, string>(); // connectionId -> participantId
   private participantToConnection = new Map<string, string>(); // participantId -> connectionId
 
   constructor() {
-    // Initialize Redis service lazily
-    this.initializeRedisService();
+    // Initialize services lazily
+    this.initializeServices();
+    this.analyticsService = createConnectionAnalyticsService();
   }
 
-  private async initializeRedisService(): Promise<void> {
+  private async initializeServices(): Promise<void> {
     try {
       this.redisService = await getService<RedisService>(ServiceKeys.REDIS_SERVICE);
     } catch (error) {
       console.error('Failed to initialize Redis service for RoomCoordinator:', error);
+    }
+
+    try {
+      this.iceServerService = await getService<IICEServerService>(ServiceKeys.ICE_SERVER_SERVICE);
+    } catch (error) {
+      console.error('Failed to initialize ICE server service for RoomCoordinator:', error);
     }
   }
 
@@ -88,12 +101,29 @@ export class RoomCoordinator {
         return Err(new Error('Room is not active'));
       }
 
+      // Initialize ICE server configuration for the room
+      let iceServerConfig: ICEServerConfig[] | undefined;
+      let iceServerExpiresAt: Date | undefined;
+
+      if (this.iceServerService) {
+        try {
+          // Use host ID for ICE server configuration
+          iceServerConfig = await this.iceServerService.generateICEServerConfiguration(room.hostId);
+          // Set expiration to 12 hours from now
+          iceServerExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+        } catch (error) {
+          console.warn('Failed to initialize ICE server configuration for room:', error);
+        }
+      }
+
       // Create session data
       const session: WebRTCSession = {
         roomId,
         participants: {},
         isRecording: RoomDomain.isRecording(room),
         recordingStartedAt: room.recordingStartedAt,
+        iceServerConfig,
+        iceServerExpiresAt,
         createdAt: new Date()
       };
 
@@ -301,26 +331,34 @@ export class RoomCoordinator {
   }
 
   /**
-   * Validate participant access to room
+   * Validate participant access to room and ICE servers
    */
   async validateParticipantAccess(
     participantId: string,
     participantType: 'host' | 'guest',
     roomId: string
-  ): Promise<Result<boolean>> {
+  ): Promise<Result<{
+    hasAccess: boolean;
+    canUseICEServers: boolean;
+    iceServerConfig?: ICEServerConfig[];
+  }>> {
     try {
+      let hasAccess = false;
+      let canUseICEServers = false;
+      let iceServerConfig: ICEServerConfig[] | undefined;
+
       if (participantType === 'host') {
         // Validate host access
         const userRepository = await getService<UserRepository>(ServiceKeys.USER_REPOSITORY);
         const userResult = await userRepository.findById(participantId);
         
         if (!userResult.success || !userResult.data) {
-          return Ok(false);
+          return Ok({ hasAccess: false, canUseICEServers: false });
         }
 
         const user = userResult.data;
         if (!user.isActive || user.role === 'guest') {
-          return Ok(false);
+          return Ok({ hasAccess: false, canUseICEServers: false });
         }
 
         // Check if user is the room host or admin
@@ -328,25 +366,156 @@ export class RoomCoordinator {
         const roomResult = await roomRepository.findById(roomId);
         
         if (!roomResult.success || !roomResult.data) {
-          return Ok(false);
+          return Ok({ hasAccess: false, canUseICEServers: false });
         }
 
         const room = roomResult.data;
-        return Ok(user.role === 'admin' || room.hostId === user.id);
+        hasAccess = user.role === 'admin' || room.hostId === user.id;
+        canUseICEServers = hasAccess; // Hosts can always use ICE servers
+
+        // Get ICE server configuration for host
+        if (hasAccess) {
+          const iceConfigResult = await this.getICEServerConfiguration(roomId, participantId);
+          if (iceConfigResult.success) {
+            iceServerConfig = iceConfigResult.data;
+          }
+        }
       } else {
         // Validate guest access
         const guestRepository = await getService<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
         const guestResult = await guestRepository.findById(participantId);
         
         if (!guestResult.success || !guestResult.data) {
-          return Ok(false);
+          return Ok({ hasAccess: false, canUseICEServers: false });
         }
 
         const guest = guestResult.data;
-        return Ok(GuestDomain.isActive(guest) && guest.roomId === roomId);
+        hasAccess = GuestDomain.isActive(guest) && guest.roomId === roomId;
+        
+        // Guests can use ICE servers if they have valid access and token hasn't expired
+        canUseICEServers = hasAccess && guest.tokenExpiresAt > new Date();
+
+        // Get ICE server configuration for guest
+        if (canUseICEServers) {
+          const iceConfigResult = await this.getICEServerConfiguration(roomId, participantId);
+          if (iceConfigResult.success) {
+            iceServerConfig = iceConfigResult.data;
+          }
+        }
       }
+
+      return Ok({
+        hasAccess,
+        canUseICEServers,
+        iceServerConfig
+      });
     } catch (error) {
       return Err(new Error(`Failed to validate participant access: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
+  /**
+   * Get ICE server configuration for a participant
+   */
+  async getICEServerConfiguration(roomId: string, participantId: string): Promise<Result<ICEServerConfig[]>> {
+    try {
+      const sessionResult = await this.getRoomSession(roomId);
+      if (!sessionResult.success) {
+        return Err(sessionResult.error);
+      }
+
+      const session = sessionResult.data;
+      if (!session) {
+        return Err(new Error('Room session not found'));
+      }
+
+      // Check if ICE server configuration exists and is not expired
+      if (session.iceServerConfig && session.iceServerExpiresAt) {
+        if (session.iceServerExpiresAt > new Date()) {
+          return Ok(session.iceServerConfig);
+        }
+      }
+
+      // Generate new ICE server configuration if needed
+      if (this.iceServerService) {
+        try {
+          const newConfig = await this.iceServerService.generateICEServerConfiguration(participantId);
+          
+          // Update session with new configuration
+          session.iceServerConfig = newConfig;
+          session.iceServerExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+          // Store updated session in Redis
+          if (this.redisService) {
+            try {
+              const sessionKey = `webrtc:session:${roomId}`;
+              const sessionData = JSON.stringify(session, (key, value) => {
+                if (value instanceof Date) {
+                  return value.toISOString();
+                }
+                return value;
+              });
+
+              await this.redisService.set(sessionKey, sessionData, 3600);
+            } catch (error) {
+              console.warn('Failed to update WebRTC session with new ICE config in Redis:', error);
+            }
+          }
+
+          return Ok(newConfig);
+        } catch (error) {
+          console.error('Failed to generate ICE server configuration:', error);
+          return Err(new Error(`Failed to generate ICE server configuration: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      }
+
+      // Return empty configuration if no ICE server service available
+      return Ok([]);
+    } catch (error) {
+      return Err(new Error(`Failed to get ICE server configuration: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
+  /**
+   * Refresh ICE server credentials for a participant
+   */
+  async refreshICEServerCredentials(roomId: string, participantId: string): Promise<Result<ICEServerConfig[]>> {
+    try {
+      if (!this.iceServerService) {
+        return Err(new Error('ICE server service not available'));
+      }
+
+      // Generate fresh ICE server configuration
+      const newConfig = await this.iceServerService.generateICEServerConfiguration(participantId);
+
+      // Update session with new configuration
+      const sessionResult = await this.getRoomSession(roomId);
+      if (sessionResult.success && sessionResult.data) {
+        const session = sessionResult.data;
+        session.iceServerConfig = newConfig;
+        session.iceServerExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+        // Store updated session in Redis
+        if (this.redisService) {
+          try {
+            const sessionKey = `webrtc:session:${roomId}`;
+            const sessionData = JSON.stringify(session, (key, value) => {
+              if (value instanceof Date) {
+                return value.toISOString();
+              }
+              return value;
+            });
+
+            await this.redisService.set(sessionKey, sessionData, 3600);
+          } catch (error) {
+            console.warn('Failed to update WebRTC session with refreshed ICE config in Redis:', error);
+          }
+        }
+      }
+
+      return Ok(newConfig);
+    } catch (error) {
+      return Err(new Error(`Failed to refresh ICE server credentials: ${error instanceof Error ? error.message : String(error)}`));
     }
   }
 
@@ -376,6 +545,10 @@ export class RoomCoordinator {
           }
         }
       }
+
+      // Clean up any ICE server resources if needed
+      // Note: TURN credentials are time-limited and will expire automatically
+      // No explicit cleanup needed for ICE servers
 
       console.log(`Cleaned up WebRTC session for room ${roomId}`);
       return Ok(undefined);
@@ -676,6 +849,41 @@ export class RoomCoordinator {
         .filter(socket => socket.readyState === WebSocket.OPEN).length,
       participantConnections: this.participantToConnection.size
     };
+  }
+
+  /**
+   * Start connection analytics tracking for a participant
+   */
+  startConnectionAnalytics(sessionId: string, roomId: string, participantId: string, participantType: 'host' | 'guest'): void {
+    this.analyticsService.startTracking(sessionId, roomId, participantId, participantType);
+  }
+
+  /**
+   * Update connection analytics with WebRTC stats
+   */
+  updateConnectionAnalytics(sessionId: string, stats: RTCStatsReport): void {
+    this.analyticsService.updateConnectionStats(sessionId, stats);
+  }
+
+  /**
+   * End connection analytics tracking
+   */
+  endConnectionAnalytics(sessionId: string): void {
+    this.analyticsService.endTracking(sessionId);
+  }
+
+  /**
+   * Get connection analytics for a room
+   */
+  getRoomAnalytics(roomId: string): any[] {
+    return this.analyticsService.getConnectionHistory(roomId);
+  }
+
+  /**
+   * Get aggregated connection metrics
+   */
+  getConnectionMetrics(timeRange?: number): any {
+    return this.analyticsService.getAggregatedMetrics(timeRange);
   }
 
   /**

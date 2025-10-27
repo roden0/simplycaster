@@ -7,7 +7,9 @@
 
 import { WebRTCClient, WebRTCClientConfig } from './webrtc-client.ts';
 import { MediaManager, MediaManagerConfig } from './media-manager.ts';
-import { SignalingErrorCode, WebRTCConnectionState } from './types.ts';
+import { SignalingErrorCode, WebRTCConnectionState, ICEServerConfig } from './types.ts';
+import { ConnectionMonitor, ConnectionMonitorConfig } from './connection-monitor.ts';
+import { ConnectionErrorHandler, ConnectionErrorHandlerConfig } from './connection-error-handler.ts';
 
 /**
  * Connection Manager Configuration
@@ -20,6 +22,10 @@ export interface ConnectionManagerConfig {
   reconnectBackoffMultiplier: number;
   healthCheckInterval: number;
   enableConnectionRecovery: boolean;
+  iceServerRefreshInterval?: number; // Interval to refresh ICE server config (default: 30 minutes)
+  fallbackStunServers?: string[]; // Fallback STUN servers if API fails
+  connectionMonitor?: Partial<ConnectionMonitorConfig>;
+  errorHandler?: Partial<ConnectionErrorHandlerConfig>;
 }
 
 /**
@@ -61,19 +67,33 @@ export class ConnectionManager {
   private config: ConnectionManagerConfig;
   private webrtcClient: WebRTCClient;
   private mediaManager: MediaManager;
+  private connectionMonitor: ConnectionMonitor;
+  private errorHandler: ConnectionErrorHandler;
   private eventListeners = new Map<keyof ConnectionManagerEvents, Function[]>();
   private healthCheckTimer: number | null = null;
   private connectionQualityTimer: number | null = null;
+  private iceServerRefreshTimer: number | null = null;
   private isConnected = false;
   private isReconnecting = false;
   private reconnectAttempts = 0;
   private connectionStartTime: Date | null = null;
   private lastConnectionQuality = new Map<string, ConnectionQuality>();
+  private currentIceServers: ICEServerConfig[] = [];
+  private iceServerLastFetched: Date | null = null;
 
   constructor(config: ConnectionManagerConfig) {
-    this.config = config;
+    this.config = {
+      ...config,
+      iceServerRefreshInterval: config.iceServerRefreshInterval || 1800000, // 30 minutes
+      fallbackStunServers: config.fallbackStunServers || [
+        'stun:stun.l.google.com:19302',
+        'stun:stun1.l.google.com:19302'
+      ]
+    };
     this.webrtcClient = new WebRTCClient(config.webrtc);
     this.mediaManager = new MediaManager(config.media);
+    this.connectionMonitor = new ConnectionMonitor(config.connectionMonitor);
+    this.errorHandler = new ConnectionErrorHandler(config.errorHandler);
     
     this.setupEventHandlers();
   }
@@ -90,15 +110,23 @@ export class ConnectionManager {
       this.connectionStartTime = new Date();
       console.log(`Connecting to room ${roomId} as ${participantName}...`);
 
+      // Fetch ICE server configuration before connecting
+      await this.refreshICEServerConfiguration(authToken);
+
+      // Update WebRTC client configuration with ICE servers
+      this.updateWebRTCClientICEServers();
+
       // Connect WebRTC client
       await this.webrtcClient.connect(roomId, participantId, participantName, authToken);
       
       this.isConnected = true;
       this.reconnectAttempts = 0;
       
-      // Start health monitoring
+      // Start monitoring
       this.startHealthMonitoring();
       this.startConnectionQualityMonitoring();
+      this.startICEServerRefreshMonitoring();
+      this.connectionMonitor.startMonitoring();
       
       this.emit('connected');
       console.log(`Successfully connected to room ${roomId}`);
@@ -123,6 +151,8 @@ export class ConnectionManager {
     // Stop monitoring
     this.stopHealthMonitoring();
     this.stopConnectionQualityMonitoring();
+    this.stopICEServerRefreshMonitoring();
+    this.connectionMonitor.stopMonitoring();
     
     // Disconnect WebRTC client
     await this.webrtcClient.disconnect();
@@ -261,10 +291,20 @@ export class ConnectionManager {
     });
 
     this.webrtcClient.on('participant-joined', (participantId, participantName) => {
+      // Add to connection monitor
+      const peerConnections = this.webrtcClient.getPeerConnections();
+      const peerInfo = peerConnections.get(participantId);
+      if (peerInfo) {
+        this.connectionMonitor.addPeerConnection(participantId, peerInfo.connection);
+      }
+      
       this.emit('participant-joined', participantId, participantName);
     });
 
     this.webrtcClient.on('participant-left', (participantId) => {
+      // Remove from monitoring and error handling
+      this.connectionMonitor.removePeerConnection(participantId);
+      this.errorHandler.clearConnectionAttempts(participantId);
       this.lastConnectionQuality.delete(participantId);
       this.emit('participant-left', participantId);
     });
@@ -290,7 +330,14 @@ export class ConnectionManager {
     });
 
     this.webrtcClient.on('error', (error, code) => {
-      this.emit('error', error, code);
+      // Handle error through error handler if it's connection-related
+      if (code === SignalingErrorCode.CONNECTION_FAILED || code === SignalingErrorCode.NETWORK_ERROR) {
+        // For now, we'll emit the error directly
+        // In a full implementation, we'd identify the specific participant and handle accordingly
+        this.emit('error', error, code);
+      } else {
+        this.emit('error', error, code);
+      }
     });
 
     // Media Manager events
@@ -309,6 +356,52 @@ export class ConnectionManager {
 
     this.mediaManager.on('error', (error, code) => {
       this.emit('error', error, code);
+    });
+
+    // Connection Monitor events
+    this.connectionMonitor.on('quality-changed', (participantId, quality) => {
+      // Update our local quality tracking
+      const connectionQuality: ConnectionQuality = {
+        participantId,
+        rtt: quality.roundTripTime,
+        packetsLost: quality.packetsLost,
+        packetsReceived: quality.packetsReceived,
+        bytesReceived: quality.bytesReceived,
+        bytesSent: quality.bytesSent,
+        quality: this.mapQualityLevel(quality),
+        timestamp: quality.timestamp
+      };
+      
+      this.lastConnectionQuality.set(participantId, connectionQuality);
+      this.emit('connection-quality', participantId, connectionQuality.quality);
+    });
+
+    this.connectionMonitor.on('connection-type-detected', (participantId, type) => {
+      console.log(`Connection type detected for ${participantId}: ${type}`);
+    });
+
+    this.connectionMonitor.on('high-latency-warning', (participantId, rtt) => {
+      console.warn(`High latency warning for ${participantId}: ${rtt}ms`);
+    });
+
+    this.connectionMonitor.on('packet-loss-warning', (participantId, packetLoss) => {
+      console.warn(`Packet loss warning for ${participantId}: ${(packetLoss * 100).toFixed(2)}%`);
+    });
+
+    // Error Handler events
+    this.errorHandler.on('reconnection-started', (participantId, attempt) => {
+      console.log(`Reconnection started for ${participantId} (attempt ${attempt})`);
+      this.emit('reconnecting', attempt, this.config.maxReconnectAttempts);
+    });
+
+    this.errorHandler.on('reconnection-succeeded', (participantId) => {
+      console.log(`Reconnection succeeded for ${participantId}`);
+      this.emit('reconnected');
+    });
+
+    this.errorHandler.on('reconnection-failed', (participantId, error) => {
+      console.error(`Reconnection failed for ${participantId}:`, error);
+      this.emit('connection-failed', error);
     });
   }
 
@@ -551,6 +644,8 @@ export class ConnectionManager {
       quality?: ConnectionQuality;
     }>;
     mediaStats: ReturnType<MediaManager['getStats']>;
+    iceServers: ICEServerConfig[];
+    iceServerLastFetched: Date | null;
   } {
     const peerConnections = this.webrtcClient.getPeerConnections();
     const participants = Array.from(peerConnections.entries()).map(([id, peerInfo]) => ({
@@ -567,7 +662,175 @@ export class ConnectionManager {
         ? Date.now() - this.connectionStartTime.getTime()
         : null,
       participants,
-      mediaStats: this.mediaManager.getStats()
+      mediaStats: this.mediaManager.getStats(),
+      iceServers: [...this.currentIceServers],
+      iceServerLastFetched: this.iceServerLastFetched
     };
+  }
+
+  /**
+   * Fetch ICE server configuration from API
+   */
+  private async fetchICEServerConfiguration(authToken?: string): Promise<ICEServerConfig[]> {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      // Add authentication header if available
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch('/api/webrtc/ice-servers', {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ICE servers: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.iceServers || !Array.isArray(data.iceServers)) {
+        throw new Error('Invalid ICE server response format');
+      }
+
+      console.log(`Fetched ${data.iceServers.length} ICE server configurations`);
+      return data.iceServers;
+    } catch (error) {
+      console.error('Failed to fetch ICE server configuration:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get fallback ICE server configuration
+   */
+  private getFallbackICEServers(): ICEServerConfig[] {
+    return [
+      {
+        urls: this.config.fallbackStunServers || [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302'
+        ]
+      }
+    ];
+  }
+
+  /**
+   * Refresh ICE server configuration
+   */
+  private async refreshICEServerConfiguration(authToken?: string): Promise<void> {
+    try {
+      const iceServers = await this.fetchICEServerConfiguration(authToken);
+      this.currentIceServers = iceServers;
+      this.iceServerLastFetched = new Date();
+      console.log('ICE server configuration refreshed successfully');
+    } catch (error) {
+      console.warn('Failed to refresh ICE server configuration, using fallback:', error);
+      this.currentIceServers = this.getFallbackICEServers();
+      this.iceServerLastFetched = new Date();
+    }
+  }
+
+  /**
+   * Update WebRTC client with current ICE server configuration
+   */
+  private updateWebRTCClientICEServers(): void {
+    if (this.currentIceServers.length === 0) {
+      console.warn('No ICE servers available, using fallback');
+      this.currentIceServers = this.getFallbackICEServers();
+    }
+
+    // Convert ICEServerConfig to RTCIceServer format
+    const rtcIceServers: RTCIceServer[] = this.currentIceServers.map(server => ({
+      urls: server.urls,
+      username: server.username,
+      credential: server.credential,
+      credentialType: server.credentialType
+    }));
+
+    // Update WebRTC client configuration
+    this.webrtcClient.updateICEServers(rtcIceServers);
+    console.log(`Updated WebRTC client with ${rtcIceServers.length} ICE servers`);
+  }
+
+  /**
+   * Start ICE server refresh monitoring
+   */
+  private startICEServerRefreshMonitoring(): void {
+    if (this.iceServerRefreshTimer || !this.config.iceServerRefreshInterval) {
+      return;
+    }
+
+    this.iceServerRefreshTimer = setInterval(async () => {
+      try {
+        await this.refreshICEServerConfiguration();
+        this.updateWebRTCClientICEServers();
+      } catch (error) {
+        console.error('Error during ICE server refresh:', error);
+      }
+    }, this.config.iceServerRefreshInterval);
+
+    console.log(`Started ICE server refresh monitoring (interval: ${this.config.iceServerRefreshInterval}ms)`);
+  }
+
+  /**
+   * Stop ICE server refresh monitoring
+   */
+  private stopICEServerRefreshMonitoring(): void {
+    if (this.iceServerRefreshTimer) {
+      clearInterval(this.iceServerRefreshTimer);
+      this.iceServerRefreshTimer = null;
+      console.log('Stopped ICE server refresh monitoring');
+    }
+  }
+
+  /**
+   * Manually refresh ICE server configuration
+   */
+  async refreshICEServers(authToken?: string): Promise<void> {
+    await this.refreshICEServerConfiguration(authToken);
+    this.updateWebRTCClientICEServers();
+  }
+
+  /**
+   * Get current ICE server configuration
+   */
+  getCurrentICEServers(): ICEServerConfig[] {
+    return [...this.currentIceServers];
+  }
+
+  /**
+   * Map connection quality metrics to quality level
+   */
+  private mapQualityLevel(quality: any): 'excellent' | 'good' | 'fair' | 'poor' {
+    const packetLossRate = quality.packetsLost / (quality.packetsReceived + quality.packetsLost);
+    
+    if (quality.roundTripTime <= 100 && packetLossRate <= 0.01) {
+      return 'excellent';
+    } else if (quality.roundTripTime <= 200 && packetLossRate <= 0.03) {
+      return 'good';
+    } else if (quality.roundTripTime <= 400 && packetLossRate <= 0.05) {
+      return 'fair';
+    } else {
+      return 'poor';
+    }
+  }
+
+  /**
+   * Get connection monitor instance
+   */
+  getConnectionMonitor(): ConnectionMonitor {
+    return this.connectionMonitor;
+  }
+
+  /**
+   * Get error handler instance
+   */
+  getErrorHandler(): ConnectionErrorHandler {
+    return this.errorHandler;
   }
 }

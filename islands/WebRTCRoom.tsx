@@ -6,7 +6,12 @@ import { RecordingStatus } from "../components/RecordingStatus.tsx";
 import { ConnectionDialog } from "../components/ConnectionDialog.tsx";
 import { ErrorDialog } from "../components/ErrorDialog.tsx";
 import { InviteDialog } from "../components/InviteDialog.tsx";
-import { getCopy } from "../lib/copy.ts";\nimport { WebRTCRoomClient } from "../lib/webrtc/index.ts";\nimport type { WebRTCRoomClientConfig, ParticipantInfo } from "../lib/webrtc/index.ts";
+import { getCopy } from "../lib/copy.ts";import { WebRTCRoomClient } from "../lib/webrtc/index.ts";
+import { WebRTCRoomClientConfig } from "../lib/webrtc/index.ts";
+import { WebRTCRoomClientConfig } from "../lib/webrtc/index.ts";
+import { type } from "node:os";
+import { WebRTCRoomClient } from "../lib/webrtc/index.ts";
+\nimport { WebRTCRoomClient } from "../lib/webrtc/index.ts";\nimport type { WebRTCRoomClientConfig, ParticipantInfo } from "../lib/webrtc/index.ts";
 
 export interface WebRTCRoomProps {
   roomId: string;
@@ -32,8 +37,11 @@ export default function WebRTCRoom({
 }: WebRTCRoomProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const recordingTimerRef = useRef<number | null>(null);
-  const webrtcClientRef = useRef<WebRTCRoomClient | null>(null);\n  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const webrtcClientRef = useRef<WebRTCRoomClient | null>(null);
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const iceServerConfigRef = useRef<RTCIceServer[]>([]);
   
   // Dialog states
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -79,6 +87,9 @@ export default function WebRTCRoom({
 
   const initializeWebRTC = async () => {
     try {
+      // Fetch ICE server configuration first
+      await fetchICEServerConfiguration();
+
       // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
@@ -98,13 +109,140 @@ export default function WebRTCRoom({
 
       isConnected.value = true;
 
-      // TODO: Initialize WebRTC signaling connection
-      // This would connect to your signaling server
+      // Initialize WebRTC signaling connection with ICE servers
       initializeSignaling();
     } catch (err) {
       console.error("Failed to get user media:", err);
       error.value = getCopy("errors.permissionDenied");
     }
+  };
+
+  const fetchICEServerConfiguration = async () => {
+    try {
+      const response = await fetch('/api/webrtc/ice-servers', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authentication headers if needed
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ICE servers: ${response.status}`);
+      }
+
+      const data = await response.json();
+      iceServerConfigRef.current = data.iceServers || [];
+      
+      console.log('Loaded ICE server configuration:', iceServerConfigRef.current);
+    } catch (err) {
+      console.warn('Failed to load ICE server configuration, using fallback:', err);
+      // Use fallback STUN servers
+      iceServerConfigRef.current = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+    }
+  };
+
+  const createPeerConnection = (participantId: string): RTCPeerConnection => {
+    const config: RTCConfiguration = {
+      iceServers: iceServerConfigRef.current,
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    };
+
+    const peerConnection = new RTCPeerConnection(config);
+    const sessionId = `${roomId}-${participantId}`;
+
+    // Start connection analytics tracking
+    // TODO: Integrate with room coordinator to start analytics tracking
+    console.log(`Starting analytics tracking for session ${sessionId}`);
+
+    // Add local stream to peer connection
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStreamRef.current!);
+      });
+    }
+
+    // Handle remote stream
+    peerConnection.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      remoteStreamsRef.current.set(participantId, remoteStream);
+      
+      // Update participant with remote stream
+      participants.value = participants.value.map((p) =>
+        p.id === participantId ? { ...p, videoStream: remoteStream } : p
+      );
+    };
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        // Send ICE candidate to remote peer via signaling
+        sendSignalingMessage({
+          type: 'ice-candidate',
+          candidate: event.candidate,
+          targetParticipant: participantId
+        });
+      }
+    };
+
+    // Handle connection state changes
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`Peer connection state for ${participantId}:`, peerConnection.connectionState);
+      
+      if (peerConnection.connectionState === 'connected') {
+        // Start periodic stats collection for analytics
+        startStatsCollection(sessionId, peerConnection);
+      } else if (peerConnection.connectionState === 'failed') {
+        // Attempt to restart ICE
+        peerConnection.restartIce();
+      } else if (peerConnection.connectionState === 'closed') {
+        // Clean up and end analytics tracking
+        peerConnectionsRef.current.delete(participantId);
+        remoteStreamsRef.current.delete(participantId);
+        // TODO: End analytics tracking
+        console.log(`Ending analytics tracking for session ${sessionId}`);
+      }
+    };
+
+    // Handle ICE connection state changes
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${participantId}:`, peerConnection.iceConnectionState);
+      
+      if (peerConnection.iceConnectionState === 'failed') {
+        console.warn(`ICE connection failed for participant ${participantId}, attempting restart`);
+        peerConnection.restartIce();
+      }
+    };
+
+    peerConnectionsRef.current.set(participantId, peerConnection);
+    return peerConnection;
+  };
+
+  const startStatsCollection = (sessionId: string, peerConnection: RTCPeerConnection) => {
+    const statsInterval = setInterval(async () => {
+      if (peerConnection.connectionState === 'closed') {
+        clearInterval(statsInterval);
+        return;
+      }
+
+      try {
+        const stats = await peerConnection.getStats();
+        // TODO: Send stats to analytics service via API or room coordinator
+        console.log(`Collected stats for session ${sessionId}:`, stats.size, 'entries');
+      } catch (error) {
+        console.error(`Failed to collect stats for session ${sessionId}:`, error);
+      }
+    }, 5000); // Collect stats every 5 seconds
+  };
+
+  const sendSignalingMessage = (message: any) => {
+    // TODO: Send message via WebSocket signaling server
+    console.log('Sending signaling message:', message);
   };
 
   const initializeSignaling = () => {
@@ -114,7 +252,9 @@ export default function WebRTCRoom({
     // - Exchanging ICE candidates
     // - Handling offer/answer SDP
     // - Managing participant list updates
+    // - Using the ICE server configuration from iceServerConfigRef.current
     console.log("Initializing signaling for room:", roomId);
+    console.log("Using ICE servers:", iceServerConfigRef.current);
   };
 
   const handleStartRecording = () => {
@@ -222,6 +362,9 @@ export default function WebRTCRoom({
     // Close all peer connections
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
+
+    // Clear remote streams
+    remoteStreamsRef.current.clear();
 
     // Clear timers
     if (recordingTimerRef.current) {

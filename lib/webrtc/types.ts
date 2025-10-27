@@ -328,6 +328,75 @@ export interface WebRTCConfig {
 }
 
 /**
+ * ICE server configuration for WebRTC
+ */
+export interface ICEServerConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+  credentialType?: 'password' | 'oauth';
+}
+
+/**
+ * TURN credentials for ICE server authentication
+ */
+export interface TurnCredentials {
+  username: string;    // timestamp:userId format
+  credential: string;  // HMAC-SHA1 hash
+  ttl: number;        // Time to live in seconds
+  expiresAt: Date;    // Expiration timestamp
+}
+
+/**
+ * ICE server environment configuration
+ */
+export interface ICEServerEnvironmentConfig {
+  stunUrls: string[];
+  turnUrls: string[];
+  host: string;
+  port: number;
+  turnsPort: number;
+  realm: string;
+  isSecure: boolean;
+}
+
+/**
+ * Connection quality metrics
+ */
+export interface ConnectionQualityMetrics {
+  connectionType: 'direct' | 'relay' | 'unknown';
+  bytesReceived: number;
+  bytesSent: number;
+  packetsLost: number;
+  packetsReceived: number;
+  packetsSent: number;
+  roundTripTime: number;
+  jitter: number;
+  availableBandwidth?: number;
+  timestamp: Date;
+}
+
+/**
+ * ICE connection state tracking
+ */
+export interface ICEConnectionInfo {
+  participantId: string;
+  connectionState: RTCPeerConnectionState;
+  iceConnectionState: RTCIceConnectionState;
+  iceGatheringState: RTCIceGatheringState;
+  localCandidates: RTCIceCandidate[];
+  remoteCandidates: RTCIceCandidate[];
+  selectedCandidatePair?: {
+    local: RTCIceCandidate;
+    remote: RTCIceCandidate;
+    type: 'host' | 'srflx' | 'prflx' | 'relay';
+  };
+  usingTurnRelay: boolean;
+  connectionEstablishedAt?: Date;
+  lastStatsUpdate: Date;
+}
+
+/**
  * Media constraints for WebRTC
  */
 export interface MediaConstraints {

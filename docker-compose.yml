@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build: .
@@ -11,8 +9,15 @@ services:
       - PASSWORD_PEPPER=your-password-pepper-change-in-production
       - BASE_URL=http://localhost:8000
       - NODE_ENV=production
+      # Coturn ICE server configuration
+      - COTURN_SECRET=${COTURN_SECRET:-default-turn-secret-change-in-production}
+      - COTURN_REALM=${COTURN_REALM:-simplycast.local}
+      - COTURN_HOST=${COTURN_HOST:-coturn}
+      - COTURN_PORT=${COTURN_PORT:-3478}
+      - COTURN_TURNS_PORT=${COTURN_TURNS_PORT:-5349}
     depends_on:
       - db
+      - coturn
     volumes:
       - ./storage:/app/storage
     restart: unless-stopped
@@ -38,6 +43,46 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+
+  # Coturn ICE server for WebRTC NAT traversal
+  coturn:
+    build:
+      context: ./docker/coturn
+      dockerfile: Dockerfile
+    ports:
+      # STUN/TURN ports
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      # TURNS (TLS) port
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      # TURN relay port range (optimized for typical usage)
+      - "49152-49252:49152-49252/udp"
+    environment:
+      # Coturn configuration via environment variables
+      - TURN_SECRET=${COTURN_SECRET:-default-turn-secret-change-in-production}
+      - TURN_REALM=${COTURN_REALM:-simplycast.local}
+      - TURN_EXTERNAL_IP=${COTURN_EXTERNAL_IP:-}
+      - TURN_LOG_LEVEL=${COTURN_LOG_LEVEL:-3}
+      - TURN_MIN_PORT=${COTURN_MIN_PORT:-49152}
+      - TURN_MAX_PORT=${COTURN_MAX_PORT:-65535}
+    volumes:
+      # Mount logs directory
+      - ./docker/coturn/logs:/var/log/coturn
+      # Optional: Mount certificates for TURNS
+      # - ./docker/coturn/certs:/etc/coturn/certs:ro
+    restart: unless-stopped
+    networks:
+      - default
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
 volumes:
   postgres_data:
