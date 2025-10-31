@@ -1,0 +1,33 @@
+# Docker Compose Override for Local Development
+# This file extends docker-compose.yml with development-specific settings
+
+services:
+  app:
+    environment:
+      # Override for development
+      - NODE_ENV=development
+      - OTEL_ENVIRONMENT=development
+      - OTEL_TRACES_SAMPLER_ARG=1.0  # Full sampling for development
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      - /app/node_modules
+
+  otel-lgtm:
+    environment:
+      # Development-friendly settings
+      - GRAFANA_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - LOKI_RETENTION_PERIOD=24h
+      - TEMPO_RETENTION_PERIOD=24h
+      - MIMIR_RETENTION_PERIOD=168h
+    ports:
+      # Expose additional ports for development
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "3100:3100"   # Loki
+      - "9090:9090"   # Mimir
+      - "3200:3200"   # Tempo

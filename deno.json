@@ -19,7 +19,12 @@
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
     "docker:build": "docker-compose build",
-    "docker:restart": "docker-compose restart"
+    "docker:restart": "docker-compose restart",
+    "otel:configure": "bash scripts/configure-otel.sh",
+    "otel:dev": "bash scripts/configure-otel.sh --environment development",
+    "otel:staging": "bash scripts/configure-otel.sh --environment staging",
+    "otel:prod": "bash scripts/configure-otel.sh --environment production",
+    "otel:validate": "bash scripts/validate-otel-config.sh"
   },
   "lint": {
     "rules": {

@@ -13,6 +13,7 @@ import { ValidationError, BusinessRuleError, EntityNotFoundError } from '../../.
 import { EventPublisher } from '../../../domain/types/events.ts';
 import { createBaseEvent, generateCorrelationId } from '../../../domain/services/event-utils.ts';
 import { EventType, RoomEventData } from '../../../domain/types/events.ts';
+import { createComponentLogger, type LogContext } from '../../../observability/logging/index.ts';
 
 /**
  * Input data for creating a room
@@ -37,6 +38,10 @@ export interface CreateRoomOutput {
  * Create Room Use Case implementation
  */
 export class CreateRoomUseCase {
+  private logger = createComponentLogger('room-service', {
+    operation: 'create-room',
+  });
+
   constructor(
     private roomRepository: RoomRepository,
     private userRepository: UserRepository,
@@ -47,16 +52,46 @@ export class CreateRoomUseCase {
    * Execute the create room use case
    */
   async execute(input: CreateRoomInput): Promise<Result<CreateRoomOutput>> {
+    const logContext: LogContext = {
+      userId: input.hostId,
+      operation: 'create-room',
+      component: 'room-service',
+      metadata: {
+        roomName: input.name,
+        slug: input.slug,
+        maxParticipants: input.maxParticipants,
+        allowVideo: input.allowVideo,
+      },
+    };
+
+    this.logger.info('Starting room creation', logContext);
+
     try {
       // 1. Validate input data
+      this.logger.debug('Validating input data', logContext);
       const validationResult = this.validateInput(input);
       if (!validationResult.success) {
+        this.logger.warn('Room creation input validation failed', {
+          ...logContext,
+          metadata: {
+            ...logContext.metadata,
+            validationError: validationResult.error.message,
+          },
+        });
         return Err(validationResult.error);
       }
 
       // 2. Validate host exists and has proper permissions
+      this.logger.debug('Validating host permissions', logContext);
       const hostValidationResult = await this.validateHost(input.hostId);
       if (!hostValidationResult.success) {
+        this.logger.warn('Host validation failed', {
+          ...logContext,
+          metadata: {
+            ...logContext.metadata,
+            hostValidationError: hostValidationResult.error.message,
+          },
+        });
         return Err(hostValidationResult.error);
       }
 
@@ -64,24 +99,63 @@ export class CreateRoomUseCase {
 
       // 3. Generate room name if not provided
       const roomName = input.name || RoomDomain.generateDefaultName();
+      this.logger.debug('Room name determined', {
+        ...logContext,
+        metadata: {
+          ...logContext.metadata,
+          finalRoomName: roomName,
+          nameGenerated: !input.name,
+        },
+      });
 
       // 4. Generate or validate slug
+      this.logger.debug('Generating or validating room slug', logContext);
       const slugResult = await this.generateOrValidateSlug(input.slug, roomName);
       if (!slugResult.success) {
+        this.logger.warn('Slug generation/validation failed', {
+          ...logContext,
+          metadata: {
+            ...logContext.metadata,
+            slugError: slugResult.error.message,
+          },
+        });
         return Err(slugResult.error);
       }
 
       const slug = slugResult.data;
+      this.logger.debug('Room slug determined', {
+        ...logContext,
+        metadata: {
+          ...logContext.metadata,
+          finalSlug: slug,
+        },
+      });
 
       // 5. Validate room configuration
+      this.logger.debug('Validating room configuration', logContext);
       const configValidationResult = this.validateRoomConfiguration(input);
       if (!configValidationResult.success) {
+        this.logger.warn('Room configuration validation failed', {
+          ...logContext,
+          metadata: {
+            ...logContext.metadata,
+            configError: configValidationResult.error.message,
+          },
+        });
         return Err(configValidationResult.error);
       }
 
       // 6. Check host room limits (business rule)
+      this.logger.debug('Checking host room limits', logContext);
       const roomLimitResult = await this.validateHostRoomLimits(input.hostId);
       if (!roomLimitResult.success) {
+        this.logger.warn('Host room limit validation failed', {
+          ...logContext,
+          metadata: {
+            ...logContext.metadata,
+            limitError: roomLimitResult.error.message,
+          },
+        });
         return Err(roomLimitResult.error);
       }
 

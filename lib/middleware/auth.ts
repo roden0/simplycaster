@@ -1,7 +1,7 @@
 /**
  * Authentication Middleware
  * 
- * Provides authentication utilities for routes
+ * Provides authentication utilities for routes with structured logging
  */
 
 import { getService } from "../container/global.ts";
@@ -11,6 +11,7 @@ import { UserRepository } from "../domain/repositories/user-repository.ts";
 import { GuestRepository } from "../domain/repositories/guest-repository.ts";
 import { RoomRepository } from "../domain/repositories/room-repository.ts";
 import { SessionService } from "../domain/services/session-service.ts";
+import { createComponentLogger, type LogContext } from "../observability/logging/structured-logger.ts";
 
 export interface AuthenticatedUser {
   id: string;
@@ -25,6 +26,23 @@ export interface AuthenticatedUser {
  * First tries Redis session validation, then falls back to JWT validation
  */
 export async function authenticateRequest(req: Request): Promise<AuthenticatedUser | null> {
+  const logger = createComponentLogger('auth-middleware');
+  const requestId = crypto.randomUUID();
+  const clientIP = getClientIP(req);
+  
+  const logContext: LogContext = {
+    requestId,
+    operation: 'authenticate-request',
+    metadata: {
+      url: req.url,
+      method: req.method,
+      clientIP,
+      userAgent: req.headers.get("User-Agent")
+    }
+  };
+
+  logger.debug('Starting authentication request', logContext);
+
   try {
     // Try to get session ID from cookie first (Redis sessions)
     const cookieHeader = req.headers.get("Cookie");
@@ -35,6 +53,11 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
       const cookies = parseCookies(cookieHeader);
       sessionId = cookies.session_id;
       token = cookies.auth_token;
+      
+      logger.debug('Extracted authentication credentials from cookies', {
+        ...logContext,
+        metadata: { hasSessionId: !!sessionId, hasToken: !!token }
+      });
     }
 
     // Try to get token from Authorization header if not in cookie
@@ -42,34 +65,67 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
       const authHeader = req.headers.get("Authorization");
       if (authHeader && authHeader.startsWith("Bearer ")) {
         token = authHeader.substring(7);
+        logger.debug('Extracted token from Authorization header', logContext);
       }
     }
 
     // First, try Redis session validation if session ID is available
     if (sessionId) {
+      logger.debug('Attempting Redis session validation', { ...logContext, sessionId });
+      
       const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
       const sessionResult = await sessionService.validateSession(sessionId);
 
       if (sessionResult.success && sessionResult.data) {
-        return {
+        const user = {
           id: sessionResult.data.userId,
           email: sessionResult.data.email,
           role: sessionResult.data.role,
           isActive: sessionResult.data.isActive,
           emailVerified: sessionResult.data.emailVerified
         };
+
+        logger.info('Authentication successful via Redis session', {
+          ...logContext,
+          userId: user.id,
+          userRole: user.role,
+          metadata: { authMethod: 'redis-session', sessionId }
+        });
+
+        return user;
+      } else {
+        logger.warn('Redis session validation failed', {
+          ...logContext,
+          sessionId,
+          metadata: { reason: sessionResult.error || 'Invalid session' }
+        });
       }
     }
 
     // Fallback to JWT token validation if Redis session is not available or invalid
     if (token) {
-      return await authenticateWithJWT(token);
+      logger.debug('Attempting JWT token validation', logContext);
+      const user = await authenticateWithJWT(token, logContext);
+      
+      if (user) {
+        logger.info('Authentication successful via JWT token', {
+          ...logContext,
+          userId: user.id,
+          userRole: user.role,
+          metadata: { authMethod: 'jwt-token' }
+        });
+        return user;
+      }
     }
 
+    logger.warn('Authentication failed - no valid credentials found', logContext);
     return null;
 
   } catch (error) {
-    console.error("Authentication error:", error);
+    logger.error('Authentication error occurred', error instanceof Error ? error : new Error(String(error)), {
+      ...logContext,
+      metadata: { errorType: 'authentication-exception' }
+    });
     return null;
   }
 }
@@ -77,23 +133,42 @@ export async function authenticateRequest(req: Request): Promise<AuthenticatedUs
 /**
  * Authenticate using JWT token (fallback method)
  */
-async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | null> {
+async function authenticateWithJWT(token: string, baseLogContext: LogContext): Promise<AuthenticatedUser | null> {
+  const logger = createComponentLogger('auth-middleware');
+  const logContext = { ...baseLogContext, operation: 'jwt-authentication' };
+
   try {
+    logger.debug('Starting JWT token verification', logContext);
+
     // Verify token using TokenService
     const tokenService = await getService<TokenService>(ServiceKeys.TOKEN_SERVICE);
     const tokenResult = await tokenService.verifyUserToken(token);
 
     if (!tokenResult.success) {
+      logger.warn('JWT token verification failed', {
+        ...logContext,
+        metadata: { reason: tokenResult.error || 'Invalid token' }
+      });
       return null;
     }
 
     const payload = tokenResult.data;
+    logger.debug('JWT token verified successfully', {
+      ...logContext,
+      userId: payload.userId,
+      metadata: { tokenType: payload.type }
+    });
 
     // Get user from repository to ensure they still exist and are active
     const userRepository = await getService<UserRepository>(ServiceKeys.USER_REPOSITORY);
     const userResult = await userRepository.findById(payload.userId);
 
     if (!userResult.success || !userResult.data) {
+      logger.warn('User not found during JWT authentication', {
+        ...logContext,
+        userId: payload.userId,
+        metadata: { reason: 'User not found or deleted' }
+      });
       return null;
     }
 
@@ -101,8 +176,19 @@ async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | n
 
     // Check if user is still active
     if (!user.isActive) {
+      logger.warn('JWT authentication failed - user inactive', {
+        ...logContext,
+        userId: user.id,
+        metadata: { reason: 'User account inactive' }
+      });
       return null;
     }
+
+    logger.debug('JWT authentication completed successfully', {
+      ...logContext,
+      userId: user.id,
+      userRole: user.role
+    });
 
     return {
       id: user.id,
@@ -113,7 +199,10 @@ async function authenticateWithJWT(token: string): Promise<AuthenticatedUser | n
     };
 
   } catch (error) {
-    console.error("JWT authentication error:", error);
+    logger.error('JWT authentication error occurred', error instanceof Error ? error : new Error(String(error)), {
+      ...logContext,
+      metadata: { errorType: 'jwt-authentication-exception' }
+    });
     return null;
   }
 }
@@ -190,6 +279,16 @@ export function requireRole(roles: string | string[]) {
  * Create a new session for authenticated user
  */
 export async function createUserSession(user: AuthenticatedUser, req: Request): Promise<string> {
+  const logger = createComponentLogger('auth-middleware');
+  const requestId = crypto.randomUUID();
+  const logContext: LogContext = {
+    requestId,
+    userId: user.id,
+    operation: 'create-user-session'
+  };
+
+  logger.info('Creating new user session', logContext);
+
   try {
     const sessionService = await getService<SessionService>(ServiceKeys.SESSION_SERVICE);
     
@@ -199,6 +298,12 @@ export async function createUserSession(user: AuthenticatedUser, req: Request): 
     // Extract request metadata
     const ipAddress = getClientIP(req);
     const userAgent = req.headers.get("User-Agent") || undefined;
+    
+    logger.debug('Session metadata extracted', {
+      ...logContext,
+      sessionId,
+      metadata: { ipAddress, userAgent: userAgent?.substring(0, 100) }
+    });
     
     // Create session data
     const sessionData = {
@@ -216,9 +321,22 @@ export async function createUserSession(user: AuthenticatedUser, req: Request): 
     // Create session in Redis
     await sessionService.createSession(sessionId, sessionData);
     
+    logger.info('User session created successfully', {
+      ...logContext,
+      sessionId,
+      metadata: { 
+        userRole: user.role,
+        emailVerified: user.emailVerified,
+        sessionDuration: '24h'
+      }
+    });
+    
     return sessionId;
   } catch (error) {
-    console.error("Failed to create user session:", error);
+    logger.error('Failed to create user session', error instanceof Error ? error : new Error(String(error)), {
+      ...logContext,
+      metadata: { errorType: 'session-creation-failed' }
+    });
     throw new Error("Failed to create session");
   }
 }

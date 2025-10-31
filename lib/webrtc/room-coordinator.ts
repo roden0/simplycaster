@@ -17,6 +17,7 @@ import { GuestDomain } from "../domain/entities/guest.ts";
 import { Result, Ok, Err } from "../domain/types/common.ts";
 import { IICEServerService, ICEServerConfig } from "./ice-server-service.ts";
 import { IConnectionAnalyticsService, createConnectionAnalyticsService } from "./connection-analytics-service.ts";
+import { createComponentLogger, type LogContext } from "../observability/logging/index.ts";
 
 /**
  * WebRTC session data stored in Redis
@@ -62,24 +63,35 @@ export class RoomCoordinator {
   private activeConnections = new Map<string, WebSocket>(); // connectionId -> WebSocket
   private connectionToParticipant = new Map<string, string>(); // connectionId -> participantId
   private participantToConnection = new Map<string, string>(); // participantId -> connectionId
+  private logger = createComponentLogger('webrtc-room-coordinator');
 
   constructor() {
     // Initialize services lazily
     this.initializeServices();
     this.analyticsService = createConnectionAnalyticsService();
+    this.logger.info('RoomCoordinator initialized');
   }
 
   private async initializeServices(): Promise<void> {
+    const logContext: LogContext = {
+      operation: 'initialize-services',
+      component: 'webrtc-room-coordinator',
+    };
+
     try {
+      this.logger.debug('Initializing Redis service', logContext);
       this.redisService = await getService<RedisService>(ServiceKeys.REDIS_SERVICE);
+      this.logger.debug('Redis service initialized successfully', logContext);
     } catch (error) {
-      console.error('Failed to initialize Redis service for RoomCoordinator:', error);
+      this.logger.error('Failed to initialize Redis service for RoomCoordinator', error as Error, logContext);
     }
 
     try {
+      this.logger.debug('Initializing ICE server service', logContext);
       this.iceServerService = await getService<IICEServerService>(ServiceKeys.ICE_SERVER_SERVICE);
+      this.logger.debug('ICE server service initialized successfully', logContext);
     } catch (error) {
-      console.error('Failed to initialize ICE server service for RoomCoordinator:', error);
+      this.logger.error('Failed to initialize ICE server service for RoomCoordinator', error as Error, logContext);
     }
   }
 
@@ -87,17 +99,34 @@ export class RoomCoordinator {
    * Create a new WebRTC room session
    */
   async createRoomSession(roomId: string): Promise<Result<WebRTCSession>> {
+    const logContext: LogContext = {
+      roomId,
+      operation: 'create-room-session',
+      component: 'webrtc-room-coordinator',
+    };
+
+    this.logger.info('Creating WebRTC room session', logContext);
+
     try {
       // Verify room exists and is active
+      this.logger.debug('Verifying room exists and is active', logContext);
       const roomRepository = await getService<RoomRepository>(ServiceKeys.ROOM_REPOSITORY);
       const roomResult = await roomRepository.findById(roomId);
       
       if (!roomResult.success || !roomResult.data) {
+        this.logger.warn('Room not found', logContext);
         return Err(new Error('Room not found'));
       }
 
       const room = roomResult.data;
       if (!RoomDomain.isActive(room)) {
+        this.logger.warn('Room is not active', {
+          ...logContext,
+          metadata: {
+            roomStatus: room.status,
+            roomClosedAt: room.closedAt?.toISOString(),
+          },
+        });
         return Err(new Error('Room is not active'));
       }
 
@@ -107,13 +136,31 @@ export class RoomCoordinator {
 
       if (this.iceServerService) {
         try {
+          this.logger.debug('Generating ICE server configuration', {
+            ...logContext,
+            userId: room.hostId,
+          });
           // Use host ID for ICE server configuration
           iceServerConfig = await this.iceServerService.generateICEServerConfiguration(room.hostId);
           // Set expiration to 12 hours from now
           iceServerExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+          this.logger.debug('ICE server configuration generated successfully', {
+            ...logContext,
+            metadata: {
+              iceServerCount: iceServerConfig.length,
+              expiresAt: iceServerExpiresAt.toISOString(),
+            },
+          });
         } catch (error) {
-          console.warn('Failed to initialize ICE server configuration for room:', error);
+          this.logger.warn('Failed to initialize ICE server configuration for room', {
+            ...logContext,
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
         }
+      } else {
+        this.logger.debug('ICE server service not available, skipping configuration', logContext);
       }
 
       // Create session data
@@ -127,9 +174,19 @@ export class RoomCoordinator {
         createdAt: new Date()
       };
 
+      this.logger.debug('WebRTC session data created', {
+        ...logContext,
+        metadata: {
+          isRecording: session.isRecording,
+          recordingStartedAt: session.recordingStartedAt?.toISOString(),
+          hasIceServerConfig: !!iceServerConfig,
+        },
+      });
+
       // Store session in Redis if available
       if (this.redisService) {
         try {
+          this.logger.debug('Storing WebRTC session in Redis', logContext);
           const sessionKey = `webrtc:session:${roomId}`;
           const sessionData = JSON.stringify(session, (key, value) => {
             if (value instanceof Date) {
@@ -139,13 +196,37 @@ export class RoomCoordinator {
           });
 
           await this.redisService.set(sessionKey, sessionData, 3600); // 1 hour TTL
+          this.logger.debug('WebRTC session stored in Redis successfully', {
+            ...logContext,
+            metadata: {
+              sessionKey,
+              ttl: 3600,
+            },
+          });
         } catch (error) {
-          console.warn('Failed to store WebRTC session in Redis:', error);
+          this.logger.warn('Failed to store WebRTC session in Redis', {
+            ...logContext,
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
         }
+      } else {
+        this.logger.debug('Redis service not available, session stored in memory only', logContext);
       }
+
+      this.logger.info('WebRTC room session created successfully', {
+        ...logContext,
+        metadata: {
+          sessionCreatedAt: session.createdAt.toISOString(),
+          isRecording: session.isRecording,
+          hasIceServerConfig: !!iceServerConfig,
+        },
+      });
 
       return Ok(session);
     } catch (error) {
+      this.logger.error('Failed to create room session', error as Error, logContext);
       return Err(new Error(`Failed to create room session: ${error instanceof Error ? error.message : String(error)}`));
     }
   }

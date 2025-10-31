@@ -2,7 +2,7 @@
  * Drizzle Room Repository Implementation
  * 
  * Implements RoomRepository interface using Drizzle ORM
- * for PostgreSQL database operations.
+ * for PostgreSQL database operations with structured logging.
  */
 
 import { eq, and, isNull, count, desc, asc, gte, lt } from 'drizzle-orm';
@@ -11,12 +11,20 @@ import { RoomRepository } from '../../domain/repositories/room-repository.ts';
 import { Room, CreateRoomData, UpdateRoomData } from '../../domain/entities/room.ts';
 import { RoomStatus, Result, PaginatedResult, PaginationParams, Ok, Err } from '../../domain/types/common.ts';
 import { ValidationError, EntityNotFoundError, ConflictError } from '../../domain/errors/index.ts';
+import { createComponentLogger, type LogContext } from '../../observability/logging/structured-logger.ts';
 
 /**
  * Drizzle implementation of RoomRepository
  */
 export class DrizzleRoomRepository implements RoomRepository {
-  constructor(private db: Database) {}
+  private logger = createComponentLogger('room-repository');
+
+  constructor(private db: Database) {
+    this.logger.debug('Room repository initialized', {
+      component: 'room-repository',
+      operation: 'constructor'
+    });
+  }
 
   /**
    * Find room by ID
@@ -211,14 +219,34 @@ export class DrizzleRoomRepository implements RoomRepository {
    * Create a new room
    */
   async create(data: CreateRoomData): Promise<Result<Room>> {
+    const logContext: LogContext = {
+      operation: 'create-room',
+      component: 'room-repository',
+      metadata: {
+        hostId: data.hostId,
+        slug: data.slug,
+        maxParticipants: data.maxParticipants,
+        allowVideo: data.allowVideo
+      }
+    };
+
+    this.logger.info('Creating new room', logContext);
+
     try {
       // Check if slug already exists (if provided)
       if (data.slug) {
+        this.logger.debug('Checking slug uniqueness', { ...logContext, metadata: { slug: data.slug } });
+        
         const slugExistsResult = await this.slugExists(data.slug);
         if (!slugExistsResult.success) {
+          this.logger.error('Failed to check slug existence', slugExistsResult.error, logContext);
           return Err(slugExistsResult.error);
         }
         if (slugExistsResult.data) {
+          this.logger.warn('Room creation failed - slug already exists', {
+            ...logContext,
+            metadata: { slug: data.slug, reason: 'slug_conflict' }
+          });
           return Err(new ConflictError('Slug already exists', 'slug'));
         }
       }
@@ -239,11 +267,24 @@ export class DrizzleRoomRepository implements RoomRepository {
         .returning();
 
       if (!result[0]) {
+        this.logger.error('Room creation failed - no result returned', new Error('No result from database'), logContext);
         return Err(new Error('Failed to create room'));
       }
 
-      return Ok(this.mapToEntity(result[0]));
+      const room = this.mapToEntity(result[0]);
+      this.logger.info('Room created successfully', {
+        ...logContext,
+        roomId: room.id,
+        metadata: {
+          roomName: room.name,
+          roomSlug: room.slug,
+          status: room.status
+        }
+      });
+
+      return Ok(room);
     } catch (error) {
+      this.logger.error('Room creation failed with exception', error instanceof Error ? error : new Error(String(error)), logContext);
       return Err(new Error(`Failed to create room: ${error instanceof Error ? error.message : String(error)}`));
     }
   }

@@ -32,8 +32,9 @@ services:
       - app_uploads:/app/uploads
     depends_on:
       - postgres
-      - redis
+      - redis-master
       - coturn
+      - otel-lgtm
     networks:
       - simplycast-prod
       - coturn-network
@@ -188,11 +189,61 @@ services:
       --cert=/etc/ssl/coturn/cert.pem
       --pkey=/etc/ssl/coturn/key.pem
 
-  # Monitoring Stack
+  # OTEL-LGTM Stack for Production Observability
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    ports:
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "3100:3100"   # Loki
+      - "9090:9090"   # Prometheus/Mimir
+      - "3200:3200"   # Tempo
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=simplycast-observability,service.version=1.0.0,deployment.environment=production
+      - GRAFANA_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
+      - LOKI_RETENTION_PERIOD=720h
+      - TEMPO_RETENTION_PERIOD=720h
+      - MIMIR_RETENTION_PERIOD=2160h
+      - GF_SECURITY_ALLOW_EMBEDDING=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    secrets:
+      - grafana_password
+    volumes:
+      - otel_prod_grafana_data:/var/lib/grafana
+      - otel_prod_loki_data:/var/lib/loki
+      - otel_prod_tempo_data:/var/lib/tempo
+      - otel_prod_mimir_data:/var/lib/mimir
+      - ../lib/observability/config:/etc/otel-lgtm/config:ro
+      - ../lib/observability/config/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ../lib/observability/config/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ../lib/observability/config/grafana/simplycast:/etc/grafana/provisioning/dashboards/simplycast:ro
+    networks:
+      - simplycast-prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Legacy Monitoring Stack (Deprecated - Use OTEL-LGTM instead)
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "9091:9090"  # Changed port to avoid conflict
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -206,11 +257,13 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
+    profiles:
+      - legacy-monitoring
 
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "3001:3000"  # Changed port to avoid conflict
     environment:
       - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
     secrets:
@@ -222,18 +275,22 @@ services:
     networks:
       - simplycast-prod
     restart: unless-stopped
+    profiles:
+      - legacy-monitoring
 
-  # Log Aggregation
+  # Log Aggregation (Deprecated - Use OTEL-LGTM instead)
   loki:
     image: grafana/loki:latest
     ports:
-      - "3100:3100"
+      - "3101:3100"  # Changed port to avoid conflict
     volumes:
       - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     networks:
       - simplycast-prod
     restart: unless-stopped
+    profiles:
+      - legacy-monitoring
 
   promtail:
     image: grafana/promtail:latest
@@ -289,6 +346,14 @@ volumes:
   grafana_data:
     driver: local
   loki_data:
+    driver: local
+  otel_prod_grafana_data:
+    driver: local
+  otel_prod_loki_data:
+    driver: local
+  otel_prod_tempo_data:
+    driver: local
+  otel_prod_mimir_data:
     driver: local
 
 networks:

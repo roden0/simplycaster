@@ -6,6 +6,7 @@
  */
 
 import { RoomCoordinator } from './room-coordinator.ts';
+import { createComponentLogger, type LogContext } from '../observability/logging/structured-logger.ts';
 
 /**
  * WebRTC Service Manager
@@ -14,29 +15,42 @@ export class WebRTCServiceManager {
   private roomCoordinator: RoomCoordinator;
   private cleanupInterval: number | null = null;
   private isRunning = false;
+  private logger = createComponentLogger('webrtc-service-manager');
 
   constructor() {
     this.roomCoordinator = new RoomCoordinator();
+    this.logger.debug('WebRTC Service Manager initialized', {
+      component: 'webrtc-service-manager',
+      operation: 'constructor'
+    });
   }
 
   /**
    * Start the WebRTC service manager
    */
   start(): void {
+    const logContext: LogContext = {
+      operation: 'start-service-manager',
+      component: 'webrtc-service-manager'
+    };
+
     if (this.isRunning) {
-      console.warn('WebRTC Service Manager is already running');
+      this.logger.warn('WebRTC Service Manager is already running', logContext);
       return;
     }
 
     this.isRunning = true;
-    console.log('Starting WebRTC Service Manager...');
+    this.logger.info('Starting WebRTC Service Manager', logContext);
 
     // Start periodic cleanup every 5 minutes
     this.cleanupInterval = setInterval(async () => {
       await this.performPeriodicCleanup();
     }, 5 * 60 * 1000);
 
-    console.log('WebRTC Service Manager started successfully');
+    this.logger.info('WebRTC Service Manager started successfully', {
+      ...logContext,
+      metadata: { cleanupInterval: '5 minutes' }
+    });
   }
 
   /**
@@ -69,9 +83,14 @@ export class WebRTCServiceManager {
    * Perform periodic cleanup tasks
    */
   private async performPeriodicCleanup(): Promise<void> {
-    try {
-      console.log('Performing WebRTC periodic cleanup...');
+    const logContext: LogContext = {
+      operation: 'periodic-cleanup',
+      component: 'webrtc-service-manager'
+    };
 
+    this.logger.debug('Starting WebRTC periodic cleanup', logContext);
+
+    try {
       // Clean up inactive connections
       const inactiveCount = this.roomCoordinator.cleanupInactiveConnections();
 
@@ -81,15 +100,31 @@ export class WebRTCServiceManager {
 
       // Log cleanup results
       if (inactiveCount > 0 || expiredCount > 0) {
-        console.log(`WebRTC cleanup completed: ${inactiveCount} inactive connections, ${expiredCount} expired sessions`);
+        this.logger.info('WebRTC cleanup completed', {
+          ...logContext,
+          metadata: {
+            inactiveConnections: inactiveCount,
+            expiredSessions: expiredCount
+          }
+        });
       }
 
       // Log current statistics
       const stats = this.roomCoordinator.getConnectionStats();
-      console.log(`WebRTC stats: ${stats.activeConnections}/${stats.totalConnections} active connections, ${stats.participantConnections} participants`);
+      this.logger.debug('WebRTC connection statistics', {
+        ...logContext,
+        metadata: {
+          activeConnections: stats.activeConnections,
+          totalConnections: stats.totalConnections,
+          participantConnections: stats.participantConnections
+        }
+      });
 
     } catch (error) {
-      console.error('Error during WebRTC periodic cleanup:', error);
+      this.logger.error('Error during WebRTC periodic cleanup', error instanceof Error ? error : new Error(String(error)), {
+        ...logContext,
+        metadata: { errorType: 'cleanup-failed' }
+      });
     }
   }
 
