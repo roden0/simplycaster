@@ -9,6 +9,7 @@ import { RoomRepository } from '../../../domain/repositories/room-repository.ts'
 import { GuestRepository } from '../../../domain/repositories/guest-repository.ts';
 import { UserRepository } from '../../../domain/repositories/user-repository.ts';
 import { TokenService } from '../../../domain/services/token-service.ts';
+import { EmailService, EmailTemplateData } from '../../../domain/services/email-service.ts';
 import { Room, RoomDomain } from '../../../domain/entities/room.ts';
 import { Guest, CreateGuestData, GuestDomain } from '../../../domain/entities/guest.ts';
 import { UserRole, Result, Ok, Err } from '../../../domain/types/common.ts';
@@ -38,6 +39,12 @@ export interface InviteGuestOutput {
   inviteUrl: string;
   expiresAt: Date;
   message: string;
+  emailDelivery?: {
+    sent: boolean;
+    messageId?: string;
+    error?: string;
+    correlationId?: string;
+  };
 }
 
 /**
@@ -52,6 +59,7 @@ export class InviteGuestUseCase {
     private guestRepository: GuestRepository,
     private userRepository: UserRepository,
     private tokenService: TokenService,
+    private emailService?: EmailService,
     private eventPublisher?: EventPublisher
   ) {}
 
@@ -157,14 +165,40 @@ export class InviteGuestUseCase {
       // 10. Generate invite URL
       const inviteUrl = this.generateInviteUrl(tokenResult.data.token, room.slug || room.id);
 
-      // 11. Prepare success response
+      // 11. Send invitation email (if email service is available and guest has email)
+      let emailDelivery: InviteGuestOutput['emailDelivery'];
+      if (this.emailService && input.email) {
+        try {
+          const hostResult = await this.userRepository.findById(input.hostId);
+          const host = hostResult.success ? hostResult.data : null;
+          
+          emailDelivery = await this.sendInvitationEmail(
+            input.email,
+            input.displayName,
+            host?.email || 'Unknown Host',
+            room,
+            inviteUrl,
+            tokenExpiresAt
+          );
+        } catch (error) {
+          // Log email error but don't fail the invitation
+          console.error('Failed to send invitation email:', error);
+          emailDelivery = {
+            sent: false,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      }
+
+      // 12. Prepare success response
       const output: InviteGuestOutput = {
         guest: createGuestResult.data,
         room: room,
         inviteToken: tokenResult.data.token,
         inviteUrl: inviteUrl,
         expiresAt: tokenExpiresAt,
-        message: `Guest "${input.displayName}" invited to room "${room.name || room.id}"`
+        message: `Guest "${input.displayName}" invited to room "${room.name || room.id}"`,
+        emailDelivery
       };
 
       return Ok(output);
@@ -230,7 +264,7 @@ export class InviteGuestUseCase {
   /**
    * Validate host exists and has proper permissions
    */
-  private async validateHost(hostId: string): Promise<Result<any>> {
+  private async validateHost(hostId: string): Promise<Result<{ id: string; email?: string; isActive: boolean; role: UserRole }>> {
     const hostResult = await this.userRepository.findById(hostId);
     if (!hostResult.success) {
       return Err(hostResult.error);
@@ -375,9 +409,92 @@ export class InviteGuestUseCase {
   }
 
   /**
+   * Send invitation email to guest
+   */
+  private async sendInvitationEmail(
+    guestEmail: string,
+    guestName: string,
+    hostName: string,
+    room: Room,
+    inviteUrl: string,
+    expiresAt: Date
+  ): Promise<InviteGuestOutput['emailDelivery']> {
+    if (!this.emailService) {
+      return {
+        sent: false,
+        error: 'Email service not available'
+      };
+    }
+
+    try {
+      // Generate correlation ID for tracking
+      const correlationId = generateCorrelationId();
+
+      // Prepare template variables
+      const templateVariables = {
+        guestName: guestName,
+        hostName: hostName,
+        roomName: room.name || `Room ${room.id}`,
+        joinUrl: inviteUrl,
+        expiresAt: this.formatExpirationDate(expiresAt),
+        // roomDescription is optional and not available in current Room entity
+        hostEmail: undefined // We don't expose host email in invitations for privacy
+      };
+
+      // Prepare email template data
+      const emailData: EmailTemplateData = {
+        to: guestEmail,
+        subject: `You're invited to join ${room.name || 'a recording session'} on SimplyCaster`,
+        templateId: 'guest-invitation',
+        variables: templateVariables,
+        priority: 'normal',
+        correlationId: correlationId
+      };
+
+      // Send email using template
+      const result = await this.emailService.sendTemplate(emailData);
+
+      if (result.success) {
+        return {
+          sent: true,
+          messageId: result.data.messageId,
+          correlationId: correlationId
+        };
+      } else {
+        return {
+          sent: false,
+          error: result.error.message,
+          correlationId: correlationId
+        };
+      }
+
+    } catch (error) {
+      return {
+        sent: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * Format expiration date for email template
+   */
+  private formatExpirationDate(expiresAt: Date): string {
+    return expiresAt.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+  }
+
+  /**
    * Validate business rules for guest invitation
    */
-  private validateInvitationBusinessRules(room: Room, host: any, input: InviteGuestInput): Result<void> {
+  private validateInvitationBusinessRules(_room: Room, host: { emailVerified?: boolean }, input: InviteGuestInput): Result<void> {
     // Business rule: Host must have verified email to invite guests
     if (!host.emailVerified) {
       return Err(new BusinessRuleError('Host email must be verified to invite guests'));

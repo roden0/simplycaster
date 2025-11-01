@@ -240,10 +240,18 @@ export class RabbitMQConnectionManager {
     // Assert main queue
     await this.publishChannel.assertQueue(queueConfig.name, queueConfig.options);
 
-    // Bind queue to exchange
+    // Determine which exchange to bind to based on queue name
+    let exchangeName = this.config.exchange;
+    if (queueConfig.name.includes('email')) {
+      // Import here to avoid circular dependency
+      const { ExchangeName } = await import('../../domain/types/rabbitmq-config.ts');
+      exchangeName = ExchangeName.EMAIL;
+    }
+
+    // Bind queue to appropriate exchange
     await this.publishChannel.bindQueue(
       queueConfig.name,
-      this.config.exchange,
+      exchangeName,
       queueConfig.routingKey
     );
 

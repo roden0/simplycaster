@@ -1,7 +1,12 @@
 import { App, staticFiles } from "fresh";
 import { define, type State } from "./utils.ts";
 import { checkDatabaseHealth, db } from "./database/connection.ts";
-import { initializeContainer } from "./lib/container/registry.ts";
+import { 
+  initializeContainer, 
+  initializeEmailConfiguration, 
+  validateEmailConfigurationHealth,
+  initializeEmailQueueService
+} from "./lib/container/registry.ts";
 
 export const app = new App<State>();
 
@@ -9,6 +14,23 @@ export const app = new App<State>();
 console.log("🔧 Initializing dependency injection container...");
 const container = initializeContainer(db);
 console.log("✅ Dependency injection container initialized");
+
+// Initialize email configuration
+try {
+  await initializeEmailConfiguration(container);
+  await validateEmailConfigurationHealth(container);
+} catch (error) {
+  console.error("❌ Email configuration initialization failed:", error);
+  // Continue startup - email configuration issues shouldn't prevent the app from starting
+}
+
+// Initialize email queue service
+try {
+  await initializeEmailQueueService(container);
+} catch (error) {
+  console.error("❌ Email queue service initialization failed:", error);
+  // Continue startup - email queue issues shouldn't prevent the app from starting
+}
 
 // Make container available globally for routes
 (globalThis as any).serviceContainer = container;

@@ -8,6 +8,26 @@
  * - Redis cache operations
  */
 
+import { recordProviderHealth } from "./email-instrumentation.ts";
+
+import { recordTemplateMetrics } from "./email-instrumentation.ts";
+
+import { recordQueueMetrics } from "./email-instrumentation.ts";
+
+import { recordEmailMetrics } from "./email-instrumentation.ts";
+
+import { instrumentTemplateOperation } from "./email-instrumentation.ts";
+
+import { instrumentQueueOperation } from "./email-instrumentation.ts";
+
+import { instrumentEmailOperation } from "./email-instrumentation.ts";
+
+import { initializeEmailInstrumentation } from "./email-instrumentation.ts";
+
+import { emailInstrumentation } from "./email-instrumentation.ts";
+
+import { EmailInstrumentation } from "./email-instrumentation.ts";
+
 // ============================================================================
 // ROOM MANAGEMENT INSTRUMENTATION
 // ============================================================================
@@ -98,6 +118,33 @@ export type {
   RateLimitContext,
   RedisOperationResult,
 } from './redis-instrumentation.ts';
+
+// ============================================================================
+// EMAIL INSTRUMENTATION
+// ============================================================================
+
+export {
+  EmailInstrumentation,
+  emailInstrumentation,
+  initializeEmailInstrumentation,
+  instrumentEmailOperation,
+  instrumentQueueOperation,
+  instrumentTemplateOperation,
+  recordEmailMetrics,
+  recordQueueMetrics,
+  recordTemplateMetrics,
+  recordProviderHealth,
+  getEmailInstrumentationHealth,
+  shutdownEmailInstrumentation,
+} from './email-instrumentation.ts';
+
+export type {
+  EmailOperationContext,
+  EmailQueueOperationContext,
+  EmailTemplateOperationContext,
+  EmailProviderHealthContext,
+  IEmailInstrumentation,
+} from './email-instrumentation.ts';
 
 // ============================================================================
 // CONVENIENCE FUNCTIONS

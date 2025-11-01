@@ -1,0 +1,8 @@
+{
+  "id": "password-reset",
+  "subject": "Reset your SimplyCaster password",
+  "requiredVariables": ["userName", "resetUrl", "expiresAt"],
+  "optionalVariables": ["userEmail", "ipAddress"],
+  "previewText": "Reset your password to regain access to your account",
+  "description": "Email template for password reset requests"
+}

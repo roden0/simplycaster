@@ -27,6 +27,64 @@ export { RealtimeServiceImpl } from './realtime-service-impl.ts';
 export { parseRedisConfig, parseCacheConfig, parseRateLimitConfig } from './redis-config.ts';
 export type { RedisConfig, CacheConfig, RateLimitConfig } from './redis-config.ts';
 
+// Email services
+export { 
+  parseEmailConfig, 
+  validateEmailConfig, 
+  getValidatedEmailConfig,
+  performEmailConfigHealthCheck 
+} from './email-config.ts';
+export type { 
+  EmailConfigExtended, 
+  EmailConfigValidationResult, 
+  EmailConfigHealthCheck 
+} from './email-config.ts';
+export { 
+  EmailConfigService, 
+  createEmailConfigService, 
+  getEmailConfigService,
+  initializeEmailConfigService,
+  validateEmailConfigOnStartup 
+} from './email-config-service.ts';
+export type { IEmailConfigService } from './email-config-service.ts';
+export { 
+  EmailInitializer,
+  createEmailInitializer,
+  initializeEmailServices,
+  validateEmailOnStartup 
+} from './email-initializer.ts';
+export { 
+  MailHogEmailProvider,
+  createMailHogEmailProvider,
+  isMailHogConfig 
+} from './mailhog-email-provider.ts';
+export { 
+  SendGridEmailProvider,
+  createSendGridEmailProvider,
+  isSendGridConfig 
+} from './sendgrid-email-provider.ts';
+export { 
+  AWSSESEmailProvider,
+  createAWSSESEmailProvider,
+  isAWSSESConfig 
+} from './aws-ses-email-provider.ts';
+export { 
+  SMTPEmailProvider,
+  createSMTPEmailProvider,
+  isSMTPConfig 
+} from './smtp-email-provider.ts';
+export { 
+  EmailServiceFactory,
+  EmailServiceProviderRegistry,
+  EmailServiceManager,
+  createEmailServiceFactory,
+  createEmailService,
+  createEmailServiceManager,
+  getEmailServiceProviderRegistry,
+  registerEmailProvider 
+} from './email-service-factory.ts';
+export type { IEmailServiceFactory } from './email-service-factory.ts';
+
 // RabbitMQ services
 export { RabbitMQConnectionManager } from './rabbitmq-connection-manager.ts';
 export { RabbitMQEventPublisher, createRabbitMQEventPublisher } from './rabbitmq-event-publisher.ts';

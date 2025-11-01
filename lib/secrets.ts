@@ -157,6 +157,40 @@ export async function getRabbitMQVHost(): Promise<string> {
 }
 
 /**
+ * Gets email configuration from environment or Docker secrets
+ * @returns Email configuration object
+ */
+export async function getEmailConfig(): Promise<{
+  provider: string;
+  fromAddress: string;
+  fromName: string;
+}> {
+  const provider = await getConfig("EMAIL_PROVIDER", "email_provider", "mailhog");
+  const fromAddress = await getConfig("EMAIL_FROM_ADDRESS", "email_from_address", "noreply@simplycast.local");
+  const fromName = await getConfig("EMAIL_FROM_NAME", "email_from_name", "SimplyCaster");
+
+  if (!provider) {
+    throw new Error(
+      "EMAIL_PROVIDER is required. Please set EMAIL_PROVIDER environment variable " +
+      "or provide email_provider Docker secret."
+    );
+  }
+
+  if (!fromAddress) {
+    throw new Error(
+      "EMAIL_FROM_ADDRESS is required. Please set EMAIL_FROM_ADDRESS environment variable " +
+      "or provide email_from_address Docker secret."
+    );
+  }
+
+  return {
+    provider: provider || "mailhog",
+    fromAddress: fromAddress || "noreply@simplycast.local",
+    fromName: fromName || "SimplyCaster",
+  };
+}
+
+/**
  * Validates that all required secrets are available
  * @returns Promise that resolves if all secrets are valid
  */
@@ -166,6 +200,7 @@ export async function validateSecrets(): Promise<void> {
     await getJwtSecret();
     await getPepperSecret();
     await getRabbitMQUrl();
+    await getEmailConfig();
     console.log("✅ All required secrets validated successfully");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

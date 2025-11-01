@@ -41,6 +41,8 @@ export interface UpdateUserData {
   lockedUntil?: Date;
   lastLoginAt?: Date;
   lastLoginIp?: string;
+  passwordHash?: string;
+  passwordSalt?: string;
 }
 
 /**

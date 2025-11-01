@@ -1,0 +1,45 @@
+SimplyCaster - Welcome! Complete Your Host Setup
+
+🎉 You've been invited to become a host!
+
+Hi {{hostName}},
+
+{{invitedByName}} has invited you to join SimplyCaster{{#organizationName}} for {{organizationName}}{{/organizationName}} as a host.
+
+Congratulations! You've been invited to become a host on SimplyCaster, the simple and powerful podcast recording platform.
+
+COMPLETE YOUR SETUP:
+{{setupUrl}}
+
+⏰ ACTION REQUIRED: This invitation expires on {{expiresAt}}
+Please complete your setup before this time to activate your host account.
+
+AS A SIMPLYCAST HOST, YOU'LL BE ABLE TO:
+✓ Create recording rooms - Set up spaces for your podcast recordings
+✓ Invite guests - Send secure invitations to participants  
+✓ Control recordings - Start, stop, and manage your recording sessions
+✓ Manage archives - Access and organize all your recorded content
+✓ Publish episodes - Upload and manage your podcast feed
+✓ High-quality audio - Automatic audio processing and optimization
+
+WHAT HAPPENS NEXT?
+1. Click the setup link above (or copy/paste it into your browser)
+2. Create a secure password for your account
+3. Verify your email address
+4. Start creating your first recording room!
+
+NEED HELP GETTING STARTED?
+Once you've completed your setup, check out our quick start guide to learn how to create your first recording session.
+
+HAVING TROUBLE?
+If the link above doesn't work, copy and paste this URL into your browser:
+{{setupUrl}}
+
+---
+
+This invitation was sent by {{invitedByName}}{{#invitedByEmail}} ({{invitedByEmail}}){{/invitedByEmail}} via SimplyCaster.
+
+If you have questions about this invitation, please contact the person who invited you.
+If you didn't expect this invitation, you can safely ignore this email.
+
+SimplyCaster - Simple, High-Quality Podcast Recording

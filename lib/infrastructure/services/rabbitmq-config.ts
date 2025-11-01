@@ -193,6 +193,63 @@ async function createDefaultQueues(): Promise<QueueConfig[]> {
       },
     },
     {
+      name: QueueName.EMAIL,
+      routingKey: 'email.send',
+      options: {
+        durable: true,
+        exclusive: false,
+        autoDelete: false,
+        arguments: {
+          'x-message-ttl': messageTtl,
+          'x-max-length': maxLength,
+          'x-dead-letter-exchange': deadLetterExchange,
+          'x-dead-letter-routing-key': 'failed.email',
+          'x-max-priority': 10, // Support priority queuing for emails
+        },
+      },
+      deadLetterQueue: {
+        exchange: deadLetterExchange,
+        queueName: `${QueueName.EMAIL}_dlq`,
+        routingKey: 'failed.email',
+        messageTtl: messageTtl * 7,
+      },
+    },
+    {
+      name: QueueName.EMAIL_RETRY,
+      routingKey: 'email.retry',
+      options: {
+        durable: true,
+        exclusive: false,
+        autoDelete: false,
+        arguments: {
+          'x-message-ttl': messageTtl,
+          'x-max-length': maxLength,
+          'x-dead-letter-exchange': deadLetterExchange,
+          'x-dead-letter-routing-key': 'failed.email.retry',
+          'x-max-priority': 10,
+        },
+      },
+      deadLetterQueue: {
+        exchange: deadLetterExchange,
+        queueName: `${QueueName.EMAIL_RETRY}_dlq`,
+        routingKey: 'failed.email.retry',
+        messageTtl: messageTtl * 7,
+      },
+    },
+    {
+      name: QueueName.EMAIL_DEAD_LETTER,
+      routingKey: 'email.dead_letter',
+      options: {
+        durable: true,
+        exclusive: false,
+        autoDelete: false,
+        arguments: {
+          'x-message-ttl': messageTtl * 30, // 30 days for email DLQ
+          'x-max-length': maxLength,
+        },
+      },
+    },
+    {
       name: QueueName.DEAD_LETTER,
       routingKey: DEFAULT_ROUTING_PATTERNS.deadLetter,
       options: {
@@ -215,6 +272,12 @@ export async function createDefaultExchanges(): Promise<ExchangeConfig[]> {
   return [
     {
       name: await getRabbitMQExchange(),
+      type: 'topic',
+      durable: true,
+      autoDelete: false,
+    },
+    {
+      name: ExchangeName.EMAIL,
       type: 'topic',
       durable: true,
       autoDelete: false,

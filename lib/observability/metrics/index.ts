@@ -58,6 +58,34 @@ export {
   shutdownInfrastructureMetrics,
 } from "./infrastructure-metrics.ts";
 
+// Export Email Metrics interfaces and types
+export type {
+  EmailDeliveryMetricsContext,
+  EmailQueueDepthContext,
+  EmailProviderPerformanceContext,
+  EmailAlertingThresholds,
+  EmailAlertContext,
+  IEmailMetricsCollector,
+} from "./email-metrics.ts";
+
+// Export Email Metrics implementation and utilities
+export {
+  EmailMetricsCollector,
+  emailMetricsCollector,
+  initializeEmailMetricsCollector,
+  recordEmailDelivery,
+  recordEmailQueueDepth,
+  recordEmailProviderPerformance,
+  checkEmailAlertingThresholds,
+  getEmailDeliveryRateStats,
+  getEmailQueueStats,
+  getEmailProviderStats,
+  setEmailAlertingThresholds,
+  getEmailAlertingThresholds,
+  getEmailMetricsCollectorHealth,
+  shutdownEmailMetricsCollector,
+} from "./email-metrics.ts";
+
 // ============================================================================
 // UNIFIED METRICS SERVICE
 // ============================================================================

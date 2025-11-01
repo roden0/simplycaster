@@ -5,7 +5,7 @@
  * with salt generation and password strength validation.
  */
 
-import { PasswordService } from '../../domain/services/password-service.ts';
+import { PasswordService, PasswordHashResult } from '../../domain/services/password-service.ts';
 import { Result, Ok, Err } from '../../domain/types/common.ts';
 import { ValidationError } from '../../domain/errors/index.ts';
 
@@ -50,6 +50,34 @@ export class ArgonPasswordService implements PasswordService {
       const hashBase64 = this.uint8ArrayToBase64(hashBytes);
       
       return Ok(hashBase64);
+    } catch (error) {
+      return Err(new Error(`Failed to hash password: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
+  /**
+   * Hash a password with auto-generated salt
+   */
+  async hashPassword(password: string): Promise<Result<PasswordHashResult>> {
+    try {
+      // Generate a new salt
+      const saltResult = await this.generateSalt();
+      if (!saltResult.success) {
+        return Err(saltResult.error);
+      }
+
+      const salt = saltResult.data;
+
+      // Hash the password with the generated salt
+      const hashResult = await this.hash(password, salt);
+      if (!hashResult.success) {
+        return Err(hashResult.error);
+      }
+
+      return Ok({
+        hash: hashResult.data,
+        salt
+      });
     } catch (error) {
       return Err(new Error(`Failed to hash password: ${error instanceof Error ? error.message : String(error)}`));
     }

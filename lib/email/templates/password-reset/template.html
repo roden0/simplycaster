@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset your SimplyCaster password</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #dc2626;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .cta-button:hover {
+            background-color: #b91c1c;
+        }
+        .security-info {
+            background-color: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #991b1b;
+        }
+        .expiry-info {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #92400e;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .help-text {
+            margin-top: 20px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">SimplyCaster</div>
+            <div class="title">Password Reset Request</div>
+        </div>
+
+        <div class="content">
+            <p>Hi {{userName}},</p>
+            
+            <p>We received a request to reset the password for your SimplyCaster account{{#userEmail}} ({{userEmail}}){{/userEmail}}.</p>
+
+            <div style="text-align: center;">
+                <a href="{{resetUrl}}" class="cta-button">Reset Your Password</a>
+            </div>
+
+            <div class="expiry-info">
+                <strong>⏰ Time Sensitive:</strong> This password reset link expires on {{expiresAt}}. 
+                You must use it within 1 hour of this email being sent.
+            </div>
+
+            <div class="security-info">
+                <strong>🔒 Security Notice:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>If you didn't request this password reset, please ignore this email</li>
+                    <li>Your current password remains unchanged until you complete the reset process</li>
+                    <li>This link can only be used once</li>
+                    {{#ipAddress}}
+                    <li>This request was made from IP address: {{ipAddress}}</li>
+                    {{/ipAddress}}
+                </ul>
+            </div>
+
+            <div class="help-text">
+                <p><strong>Having trouble with the button?</strong></p>
+                <p>Copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; background-color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace;">{{resetUrl}}</p>
+
+                <p><strong>Need help?</strong></p>
+                <p>If you're having trouble resetting your password or didn't request this reset, please contact support.</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>This password reset was requested for your SimplyCaster account.</p>
+            <p>If you didn't make this request, you can safely ignore this email.</p>
+            <p>For security reasons, this link will expire in 1 hour.</p>
+        </div>
+    </div>
+</body>
+</html>

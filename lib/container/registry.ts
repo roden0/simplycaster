@@ -13,6 +13,8 @@ import { UserRepository } from '../domain/repositories/user-repository.ts';
 import { RoomRepository } from '../domain/repositories/room-repository.ts';
 import { GuestRepository } from '../domain/repositories/guest-repository.ts';
 import { FeedEpisodeRepository } from '../domain/repositories/feed-episode-repository.ts';
+import { PasswordResetTokenRepository } from '../domain/repositories/password-reset-token-repository.ts';
+import { UserInvitationRepository } from '../domain/repositories/user-invitation-repository.ts';
 import { PasswordService } from '../domain/services/password-service.ts';
 import { StorageService } from '../domain/services/storage-service.ts';
 import { TokenService } from '../domain/services/token-service.ts';
@@ -22,6 +24,8 @@ import { SessionService } from '../domain/services/session-service.ts';
 import { RateLimitService } from '../domain/services/rate-limit-service.ts';
 import { RealtimeService } from '../domain/services/realtime-service.ts';
 import { EventPublisher } from '../domain/types/events.ts';
+import { EmailService } from '../domain/services/email-service.ts';
+import { EmailQueueConfig } from '../domain/types/email-queue.ts';
 
 // Infrastructure implementations
 import { 
@@ -30,7 +34,9 @@ import {
   DrizzleRecordingRepository,
   DrizzleRecordingFileRepository,
   DrizzleGuestRepository,
-  DrizzleFeedEpisodeRepository
+  DrizzleFeedEpisodeRepository,
+  DrizzlePasswordResetTokenRepository,
+  DrizzleUserInvitationRepository
 } from '../infrastructure/repositories/index.ts';
 
 import {
@@ -44,7 +50,15 @@ import {
   RealtimeServiceImpl,
   parseRedisConfig,
   parseCacheConfig,
-  parseRateLimitConfig
+  parseRateLimitConfig,
+  createEmailConfigService,
+  IEmailConfigService,
+  createEmailInitializer,
+  EmailInitializer,
+  createEmailServiceFactory,
+  IEmailServiceFactory,
+  createEmailService,
+  getValidatedEmailConfig
 } from '../infrastructure/services/index.ts';
 
 import { CacheServiceImpl } from '../infrastructure/services/cache-service-impl.ts';
@@ -64,6 +78,7 @@ import { RedisMonitoringService } from '../infrastructure/services/redis-monitor
 import { RedisHealthService } from '../infrastructure/services/redis-health-service.ts';
 import { RedisLogger } from '../infrastructure/services/redis-logger.ts';
 import { RedisServiceWithLogging } from '../infrastructure/services/redis-service-with-logging.ts';
+import { EmailQueueService, createEmailQueueService, createEmailQueueConfig } from '../infrastructure/services/email-queue-service.ts';
 
 // WebRTC services
 import { IICEServerService, createICEServerService } from '../webrtc/ice-server-service.ts';
@@ -92,7 +107,13 @@ import {
 } from '../application/use-cases/room/index.ts';
 
 import {
-  LogoutUserUseCase
+  LogoutUserUseCase,
+  RequestPasswordResetUseCase,
+  ResetPasswordUseCase,
+  InviteHostUseCase,
+  CompleteHostSetupUseCase,
+  ResendHostInvitationUseCase,
+  ListHostInvitationsUseCase
 } from '../application/use-cases/user/index.ts';
 
 import {
@@ -122,6 +143,8 @@ export const ServiceKeys = {
   RECORDING_FILE_REPOSITORY: 'recordingFileRepository',
   GUEST_REPOSITORY: 'guestRepository',
   FEED_EPISODE_REPOSITORY: 'feedEpisodeRepository',
+  PASSWORD_RESET_TOKEN_REPOSITORY: 'passwordResetTokenRepository',
+  USER_INVITATION_REPOSITORY: 'userInvitationRepository',
   
   // Infrastructure Services
   PASSWORD_SERVICE: 'passwordService',
@@ -131,6 +154,15 @@ export const ServiceKeys = {
   EVENT_PUBLISHER: 'eventPublisher',
   ASYNC_EVENT_PUBLISHER: 'asyncEventPublisher',
   RABBITMQ_METRICS_COLLECTOR: 'rabbitMQMetricsCollector',
+  
+  // Email Services
+  EMAIL_CONFIG_SERVICE: 'emailConfigService',
+  EMAIL_INITIALIZER: 'emailInitializer',
+  EMAIL_SERVICE_FACTORY: 'emailServiceFactory',
+  EMAIL_SERVICE: 'emailService',
+  EMAIL_SERVICE_MANAGER: 'emailServiceManager',
+  EMAIL_QUEUE_CONFIG: 'emailQueueConfig',
+  EMAIL_QUEUE_SERVICE: 'emailQueueService',
   
   // Redis Services
   REDIS_CONNECTION_MANAGER: 'redisConnectionManager',
@@ -177,6 +209,12 @@ export const ServiceKeys = {
   PUBLISH_EPISODE_USE_CASE: 'publishEpisodeUseCase',
   UPDATE_EPISODE_USE_CASE: 'updateEpisodeUseCase',
   DELETE_EPISODE_USE_CASE: 'deleteEpisodeUseCase',
+  REQUEST_PASSWORD_RESET_USE_CASE: 'requestPasswordResetUseCase',
+  RESET_PASSWORD_USE_CASE: 'resetPasswordUseCase',
+  INVITE_HOST_USE_CASE: 'inviteHostUseCase',
+  COMPLETE_HOST_SETUP_USE_CASE: 'completeHostSetupUseCase',
+  RESEND_HOST_INVITATION_USE_CASE: 'resendHostInvitationUseCase',
+  LIST_HOST_INVITATIONS_USE_CASE: 'listHostInvitationsUseCase',
 } as const;
 
 export type ServiceKey = typeof ServiceKeys[keyof typeof ServiceKeys];
@@ -217,6 +255,14 @@ export function registerServices(container: Container, config: ServiceRegistryCo
     return new DrizzleFeedEpisodeRepository(database);
   });
 
+  container.register<PasswordResetTokenRepository>(ServiceKeys.PASSWORD_RESET_TOKEN_REPOSITORY, () => {
+    return new DrizzlePasswordResetTokenRepository(database);
+  });
+
+  container.register<UserInvitationRepository>(ServiceKeys.USER_INVITATION_REPOSITORY, () => {
+    return new DrizzleUserInvitationRepository(database);
+  });
+
   // Register infrastructure services with concrete implementations
   container.register<PasswordService>(ServiceKeys.PASSWORD_SERVICE, () => {
     return new ArgonPasswordService();
@@ -233,6 +279,46 @@ export function registerServices(container: Container, config: ServiceRegistryCo
   container.register(ServiceKeys.AUDIT_SERVICE, () => {
     // TODO: Replace with DatabaseAuditService implementation
     throw new Error('AuditService implementation not yet available');
+  });
+
+  // Register email configuration service
+  container.register<IEmailConfigService>(ServiceKeys.EMAIL_CONFIG_SERVICE, () => {
+    return createEmailConfigService();
+  });
+
+  // Register email initializer
+  container.register<EmailInitializer>(ServiceKeys.EMAIL_INITIALIZER, () => {
+    return createEmailInitializer(container);
+  });
+
+  // Register email service factory
+  container.register<IEmailServiceFactory>(ServiceKeys.EMAIL_SERVICE_FACTORY, () => {
+    return createEmailServiceFactory();
+  });
+
+  // Register email service manager with enhanced factory and fallback support
+  container.register(ServiceKeys.EMAIL_SERVICE_MANAGER, async () => {
+    const { createEmailServiceWithFallbacks } = await import('../infrastructure/services/email-service-factory.ts');
+    const templateService = null; // TODO: Get template service from container when available
+    return await createEmailServiceWithFallbacks(templateService);
+  });
+
+  // Register email service (alias to manager for backward compatibility)
+  container.register<EmailService>(ServiceKeys.EMAIL_SERVICE, async () => {
+    return await container.get(ServiceKeys.EMAIL_SERVICE_MANAGER);
+  });
+
+  // Register email queue configuration
+  container.register<EmailQueueConfig>(ServiceKeys.EMAIL_QUEUE_CONFIG, async () => {
+    return await createEmailQueueConfig();
+  });
+
+  // Register email queue service
+  container.register<EmailQueueService>(ServiceKeys.EMAIL_QUEUE_SERVICE, async () => {
+    const emailService = await container.get<EmailService>(ServiceKeys.EMAIL_SERVICE);
+    const rabbitMQConfig = await parseRabbitMQConfig();
+    const emailQueueConfig = await container.get<EmailQueueConfig>(ServiceKeys.EMAIL_QUEUE_CONFIG);
+    return await createEmailQueueService(emailService, rabbitMQConfig, emailQueueConfig);
   });
 
   container.register<EventPublisher>(ServiceKeys.EVENT_PUBLISHER, async () => {
@@ -525,8 +611,9 @@ export function registerServices(container: Container, config: ServiceRegistryCo
     const guestRepository = container.getSync<GuestRepository>(ServiceKeys.GUEST_REPOSITORY);
     const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
     const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const emailService = await container.get<EmailService>(ServiceKeys.EMAIL_SERVICE);
     const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
-    return new InviteGuestUseCase(roomRepository, guestRepository, userRepository, tokenService, eventPublisher);
+    return new InviteGuestUseCase(roomRepository, guestRepository, userRepository, tokenService, emailService, eventPublisher);
   });
 
   // Register new use cases
@@ -583,6 +670,54 @@ export function registerServices(container: Container, config: ServiceRegistryCo
     const eventPublisher = await container.get<EventPublisher>(ServiceKeys.EVENT_PUBLISHER);
     return new DeleteEpisodeUseCase(feedEpisodeRepository, eventPublisher);
   });
+
+  // Register password reset use cases
+  container.register(ServiceKeys.REQUEST_PASSWORD_RESET_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const emailService = await container.get<EmailService>(ServiceKeys.EMAIL_SERVICE);
+    const database = container.getSync<Database>(ServiceKeys.DATABASE);
+    return new RequestPasswordResetUseCase(userRepository, tokenService, emailService, database);
+  });
+
+  container.register(ServiceKeys.RESET_PASSWORD_USE_CASE, async () => {
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const passwordService = container.getSync<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
+    const database = container.getSync<Database>(ServiceKeys.DATABASE);
+    return new ResetPasswordUseCase(userRepository, tokenService, passwordService, database);
+  });
+
+  // Register host invitation use cases
+  container.register(ServiceKeys.INVITE_HOST_USE_CASE, async () => {
+    const userInvitationRepository = container.getSync<UserInvitationRepository>(ServiceKeys.USER_INVITATION_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const emailService = await container.get<EmailService>(ServiceKeys.EMAIL_SERVICE);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    return new InviteHostUseCase(userInvitationRepository, userRepository, emailService, tokenService);
+  });
+
+  container.register(ServiceKeys.COMPLETE_HOST_SETUP_USE_CASE, async () => {
+    const userInvitationRepository = container.getSync<UserInvitationRepository>(ServiceKeys.USER_INVITATION_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    const passwordService = container.getSync<PasswordService>(ServiceKeys.PASSWORD_SERVICE);
+    return new CompleteHostSetupUseCase(userInvitationRepository, userRepository, tokenService, passwordService);
+  });
+
+  container.register(ServiceKeys.RESEND_HOST_INVITATION_USE_CASE, async () => {
+    const userInvitationRepository = container.getSync<UserInvitationRepository>(ServiceKeys.USER_INVITATION_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    const emailService = await container.get<EmailService>(ServiceKeys.EMAIL_SERVICE);
+    const tokenService = container.getSync<TokenService>(ServiceKeys.TOKEN_SERVICE);
+    return new ResendHostInvitationUseCase(userInvitationRepository, userRepository, emailService, tokenService);
+  });
+
+  container.register(ServiceKeys.LIST_HOST_INVITATIONS_USE_CASE, async () => {
+    const userInvitationRepository = container.getSync<UserInvitationRepository>(ServiceKeys.USER_INVITATION_REPOSITORY);
+    const userRepository = container.getSync<UserRepository>(ServiceKeys.USER_REPOSITORY);
+    return new ListHostInvitationsUseCase(userInvitationRepository, userRepository);
+  });
 }
 
 /**
@@ -634,4 +769,251 @@ export function initializeContainer(database: Database): Container {
   }
   
   return container;
+}
+
+/**
+ * Initialize email configuration service on application startup
+ * @param container - The dependency injection container
+ */
+export async function initializeEmailConfiguration(container: Container): Promise<void> {
+  try {
+    console.log('🔧 Initializing email configuration...');
+    
+    // Get email configuration service from container
+    const emailConfigService = container.getSync<IEmailConfigService>(ServiceKeys.EMAIL_CONFIG_SERVICE);
+    
+    // Initialize email configuration service
+    await emailConfigService.initialize();
+    
+    console.log('✅ Email configuration initialized successfully');
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to initialize email configuration:', errorMessage);
+    
+    // In development, we might want to continue even if email is not configured
+    const isDevelopment = Deno.env.get('DENO_ENV') === 'development' || Deno.env.get('NODE_ENV') === 'development';
+    
+    if (isDevelopment) {
+      console.warn('⚠️  Continuing startup in development mode despite email configuration issues');
+      return;
+    }
+    
+    throw new Error(`Email configuration initialization failed: ${errorMessage}`);
+  }
+}
+
+/**
+ * Validate email configuration health on application startup
+ * @param container - The dependency injection container
+ */
+export async function validateEmailConfigurationHealth(container: Container): Promise<void> {
+  try {
+    console.log('🔍 Validating email configuration health...');
+    
+    const emailConfigService = container.getSync<IEmailConfigService>(ServiceKeys.EMAIL_CONFIG_SERVICE);
+    
+    // Perform health check
+    const healthCheck = await emailConfigService.healthCheck();
+    
+    if (!healthCheck.configValid) {
+      throw new Error(`Email configuration validation failed: ${healthCheck.errors.join(', ')}`);
+    }
+    
+    if (!healthCheck.providerReachable) {
+      console.warn('⚠️  Email provider connectivity test failed');
+      console.warn('   This may be expected in development or if the provider is temporarily unavailable');
+    } else {
+      console.log('✅ Email provider connectivity test passed');
+    }
+    
+    if (healthCheck.warnings.length > 0) {
+      console.warn('⚠️  Email configuration warnings:');
+      healthCheck.warnings.forEach(warning => console.warn(`   - ${warning}`));
+    }
+    
+    // Log configuration metadata
+    const metadata = emailConfigService.getConfigMetadata();
+    console.log('📊 Email configuration metadata:', {
+      provider: metadata.provider,
+      queueEnabled: metadata.queueEnabled,
+      rateLimitEnabled: metadata.rateLimitEnabled,
+      templatesEnabled: metadata.templatesEnabled,
+    });
+    
+    console.log('✅ Email configuration health validation completed');
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Email configuration health validation failed:', errorMessage);
+    throw new Error(`Email configuration health validation failed: ${errorMessage}`);
+  }
+}
+
+/**
+ * Initialize email queue service on application startup
+ * @param container - The dependency injection container
+ */
+export async function initializeEmailQueueService(container: Container): Promise<void> {
+  try {
+    console.log('🔧 Initializing email queue service...');
+    
+    // Get email queue service from container
+    const emailQueueService = await container.get<EmailQueueService>(ServiceKeys.EMAIL_QUEUE_SERVICE);
+    
+    // Check if queue is enabled
+    if (!emailQueueService.isQueueEnabled()) {
+      console.log('📧 Email queue is disabled, skipping queue service initialization');
+      return;
+    }
+    
+    // Start the email queue consumer
+    await emailQueueService.start();
+    
+    // Perform health check
+    const health = await emailQueueService.getHealth();
+    if (!health.healthy) {
+      console.warn('⚠️  Email queue health check failed:', health.details);
+    } else {
+      console.log('✅ Email queue health check passed');
+    }
+    
+    // Log queue configuration
+    const config = emailQueueService.getConfig();
+    console.log('📊 Email queue configuration:', {
+      enabled: config.enabled,
+      concurrency: config.concurrency,
+      maxRetryAttempts: config.maxRetryAttempts,
+      retryDelay: config.retryDelay,
+      maxRetryDelay: config.maxRetryDelay,
+    });
+    
+    console.log('✅ Email queue service initialized successfully');
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to initialize email queue service:', errorMessage);
+    
+    // In development, we might want to continue even if email queue is not configured
+    const isDevelopment = Deno.env.get('DENO_ENV') === 'development' || Deno.env.get('NODE_ENV') === 'development';
+    
+    if (isDevelopment) {
+      console.warn('⚠️  Continuing startup in development mode despite email queue issues');
+      return;
+    }
+    
+    throw new Error(`Email queue service initialization failed: ${errorMessage}`);
+  }
+}
+
+/**
+ * Initialize email service factory and manager on application startup
+ * @param container - The dependency injection container
+ */
+export async function initializeEmailServiceFactory(container: Container): Promise<void> {
+  try {
+    console.log('🔧 Initializing email service factory and manager...');
+    
+    // Import factory functions
+    const { 
+      initializeEmailServicesOnStartup, 
+      validateEmailServiceConfiguration 
+    } = await import('../infrastructure/services/email-service-factory.ts');
+    
+    // Validate configuration first
+    const configValidation = await validateEmailServiceConfiguration();
+    
+    if (!configValidation.valid) {
+      console.error('❌ Email service configuration validation failed:', configValidation.errors);
+      
+      const isDevelopment = Deno.env.get('DENO_ENV') === 'development' || Deno.env.get('NODE_ENV') === 'development';
+      if (!isDevelopment) {
+        throw new Error(`Email service configuration validation failed: ${configValidation.errors.join(', ')}`);
+      }
+      
+      console.warn('⚠️  Continuing in development mode despite configuration errors');
+    }
+    
+    if (configValidation.warnings.length > 0) {
+      console.warn('⚠️  Email service configuration warnings:');
+      configValidation.warnings.forEach(warning => console.warn(`   - ${warning}`));
+    }
+    
+    // Log configuration metadata
+    console.log('📊 Email service configuration metadata:', configValidation.metadata);
+    
+    // Initialize email services with startup configuration
+    const startupResult = await initializeEmailServicesOnStartup({
+      validateConfiguration: true,
+      performHealthChecks: true,
+      enableFallbacks: true,
+      logConfiguration: true,
+      failOnConfigurationError: false // Allow startup to continue with warnings
+    });
+    
+    if (!startupResult.success) {
+      console.error('❌ Email service initialization completed with errors:', startupResult.errors);
+      
+      const isDevelopment = Deno.env.get('DENO_ENV') === 'development' || Deno.env.get('NODE_ENV') === 'development';
+      if (!isDevelopment) {
+        throw new Error(`Email service initialization failed: ${startupResult.errors.join(', ')}`);
+      }
+      
+      console.warn('⚠️  Continuing in development mode despite initialization errors');
+    }
+    
+    // Ensure the email service manager is available in the container
+    const emailServiceManager = await container.get(ServiceKeys.EMAIL_SERVICE_MANAGER);
+    
+    if (emailServiceManager) {
+      console.log('✅ Email service factory and manager initialized successfully');
+      
+      // Log manager statistics
+      if ('getServiceStatistics' in emailServiceManager) {
+        const stats = (emailServiceManager as any).getServiceStatistics();
+        console.log('📊 Email service manager statistics:', stats);
+      }
+    } else {
+      throw new Error('Email service manager not available in container');
+    }
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to initialize email service factory and manager:', errorMessage);
+    
+    const isDevelopment = Deno.env.get('DENO_ENV') === 'development' || Deno.env.get('NODE_ENV') === 'development';
+    
+    if (isDevelopment) {
+      console.warn('⚠️  Continuing startup in development mode despite email service factory issues');
+      return;
+    }
+    
+    throw new Error(`Email service factory initialization failed: ${errorMessage}`);
+  }
+}
+
+/**
+ * Complete email system initialization on application startup
+ * @param container - The dependency injection container
+ */
+export async function initializeCompleteEmailSystem(container: Container): Promise<void> {
+  try {
+    console.log('🚀 Starting complete email system initialization...');
+    
+    // Initialize email configuration
+    await initializeEmailConfiguration(container);
+    
+    // Initialize email service factory and manager
+    await initializeEmailServiceFactory(container);
+    
+    // Initialize email queue service
+    await initializeEmailQueueService(container);
+    
+    console.log('✅ Complete email system initialization completed successfully');
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Complete email system initialization failed:', errorMessage);
+    throw new Error(`Complete email system initialization failed: ${errorMessage}`);
+  }
 }

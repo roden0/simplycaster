@@ -1,0 +1,39 @@
+SimplyCaster - Recording Session Invitation
+
+Hi {{guestName}},
+
+{{hostName}} has invited you to join a recording session on SimplyCaster.
+
+Room: {{roomName}}
+Host: {{hostName}}
+{{#roomDescription}}
+Description: {{roomDescription}}
+{{/roomDescription}}
+
+JOIN THE SESSION:
+{{joinUrl}}
+
+⏰ IMPORTANT: This invitation expires on {{expiresAt}}
+Please join before this time to participate in the recording.
+
+WHAT TO EXPECT:
+- You'll be able to participate in the conversation
+- Your audio will be recorded for the session
+- The host will control when recording starts and stops
+- You can leave the session at any time
+
+TECHNICAL REQUIREMENTS:
+- A modern web browser (Chrome, Firefox, Safari, or Edge)
+- A microphone for audio input
+- Stable internet connection
+
+---
+
+This invitation was sent by {{hostName}} via SimplyCaster.
+{{#hostEmail}}
+If you have questions, you can contact the host at {{hostEmail}}
+{{/hostEmail}}
+
+If you're having technical issues, please check our support documentation.
+
+SimplyCaster - Simple, High-Quality Podcast Recording

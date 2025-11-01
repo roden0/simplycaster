@@ -8,10 +8,30 @@ services:
       - NODE_ENV=development
       - OTEL_ENVIRONMENT=development
       - OTEL_TRACES_SAMPLER_ARG=1.0  # Full sampling for development
+      # Email service configuration for development
+      - EMAIL_PROVIDER=mailhog
+      - EMAIL_SMTP_HOST=mailhog
+      - EMAIL_SMTP_PORT=1025
+      - EMAIL_FROM_ADDRESS=noreply@simplycast.local
+      - EMAIL_FROM_NAME=SimplyCaster Development
+      - EMAIL_QUEUE_ENABLED=true
+      - EMAIL_QUEUE_CONCURRENCY=5
+      - EMAIL_RETRY_ATTEMPTS=3
+      - EMAIL_RETRY_DELAY=5000
+      # RabbitMQ configuration for development
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - RABBITMQ_EXCHANGE=simplycast.events
+      - RABBITMQ_VHOST=/
     volumes:
       # Mount source code for hot reload
       - .:/app
       - /app/node_modules
+    depends_on:
+      - db
+      - coturn
+      - otel-lgtm
+      - mailhog
+      - rabbitmq
 
   otel-lgtm:
     environment:
@@ -31,3 +51,54 @@ services:
       - "3100:3100"   # Loki
       - "9090:9090"   # Mimir
       - "3200:3200"   # Tempo
+
+  # MailHog SMTP testing service for development
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    environment:
+      - MH_STORAGE=maildir
+      - MH_MAILDIR_PATH=/maildir
+      - MH_SMTP_BIND_ADDR=0.0.0.0:1025
+      - MH_UI_BIND_ADDR=0.0.0.0:8025
+      - MH_API_BIND_ADDR=0.0.0.0:8025
+    volumes:
+      - mailhog_data:/maildir
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025/api/v1/messages"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # RabbitMQ message broker for development
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_VHOST=/
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,error},{default,info}] disk_free_limit 2147483648
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  mailhog_data:
+  rabbitmq_data:

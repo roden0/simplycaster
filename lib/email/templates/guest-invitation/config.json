@@ -1,0 +1,8 @@
+{
+  "id": "guest-invitation",
+  "subject": "You're invited to join {{roomName}} on SimplyCaster",
+  "requiredVariables": ["guestName", "hostName", "roomName", "joinUrl", "expiresAt"],
+  "optionalVariables": ["roomDescription", "hostEmail"],
+  "previewText": "Join {{hostName}} for a recording session",
+  "description": "Email template for inviting guests to join a recording room"
+}

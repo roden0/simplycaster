@@ -9,3 +9,4 @@ export * from './base-errors.ts';
 export * from './user-errors.ts';
 export * from './room-errors.ts';
 export * from './recording-errors.ts';
+export * from './email-errors.ts';

@@ -233,6 +233,9 @@ export interface RoutingKeyPatterns {
   /** Feed events routing pattern */
   feed: string;
   
+  /** Email events routing pattern */
+  email: string;
+  
   /** Dead letter routing pattern */
   deadLetter: string;
 }
@@ -246,6 +249,7 @@ export const DEFAULT_ROUTING_PATTERNS: RoutingKeyPatterns = {
   users: 'users.*',
   auth: 'auth.*',
   feed: 'feed.*',
+  email: 'email.*',
   deadLetter: 'failed.*',
 };
 
@@ -257,6 +261,9 @@ export enum QueueName {
   RECORDINGS = 'recordings_queue',
   USERS = 'users_queue',
   FEED = 'feed_queue',
+  EMAIL = 'email_queue',
+  EMAIL_RETRY = 'email_retry_queue',
+  EMAIL_DEAD_LETTER = 'email_dead_letter_queue',
   DEAD_LETTER = 'dead_letter_queue',
 }
 
@@ -265,6 +272,7 @@ export enum QueueName {
  */
 export enum ExchangeName {
   MAIN = 'simplycast.events',
+  EMAIL = 'simplycast.email',
   DEAD_LETTER = 'simplycast.dlx',
 }
 

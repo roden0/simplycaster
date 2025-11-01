@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to SimplyCaster - Complete your host setup</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .welcome-box {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #059669;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .cta-button:hover {
+            background-color: #047857;
+        }
+        .expiry-info {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #92400e;
+        }
+        .features-list {
+            background-color: #f9fafb;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .features-list h3 {
+            color: #1f2937;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .features-list ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .features-list li {
+            margin-bottom: 8px;
+            color: #4b5563;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .help-text {
+            margin-top: 20px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">SimplyCaster</div>
+            <div class="title">Welcome to SimplyCaster!</div>
+        </div>
+
+        <div class="content">
+            <div class="welcome-box">
+                <h2 style="color: #2563eb; margin-top: 0;">🎉 You've been invited to become a host!</h2>
+                <p>{{invitedByName}} has invited you to join SimplyCaster{{#organizationName}} for {{organizationName}}{{/organizationName}} as a host.</p>
+            </div>
+
+            <p>Hi {{hostName}},</p>
+            
+            <p>Congratulations! You've been invited to become a host on SimplyCaster, the simple and powerful podcast recording platform.</p>
+
+            <div style="text-align: center;">
+                <a href="{{setupUrl}}" class="cta-button">Complete Your Setup</a>
+            </div>
+
+            <div class="expiry-info">
+                <strong>⏰ Action Required:</strong> This invitation expires on {{expiresAt}}. 
+                Please complete your setup before this time to activate your host account.
+            </div>
+
+            <div class="features-list">
+                <h3>As a SimplyCaster host, you'll be able to:</h3>
+                <ul>
+                    <li><strong>Create recording rooms</strong> - Set up spaces for your podcast recordings</li>
+                    <li><strong>Invite guests</strong> - Send secure invitations to participants</li>
+                    <li><strong>Control recordings</strong> - Start, stop, and manage your recording sessions</li>
+                    <li><strong>Manage archives</strong> - Access and organize all your recorded content</li>
+                    <li><strong>Publish episodes</strong> - Upload and manage your podcast feed</li>
+                    <li><strong>High-quality audio</strong> - Automatic audio processing and optimization</li>
+                </ul>
+            </div>
+
+            <div class="help-text">
+                <p><strong>What happens next?</strong></p>
+                <ol>
+                    <li>Click the "Complete Your Setup" button above</li>
+                    <li>Create a secure password for your account</li>
+                    <li>Verify your email address</li>
+                    <li>Start creating your first recording room!</li>
+                </ol>
+
+                <p><strong>Need help getting started?</strong></p>
+                <p>Once you've completed your setup, check out our quick start guide to learn how to create your first recording session.</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>This invitation was sent by {{invitedByName}}{{#invitedByEmail}} ({{invitedByEmail}}){{/invitedByEmail}} via SimplyCaster.</p>
+            <p>If you have questions about this invitation, please contact the person who invited you.</p>
+            <p>If you didn't expect this invitation, you can safely ignore this email.</p>
+        </div>
+    </div>
+</body>
+</html>

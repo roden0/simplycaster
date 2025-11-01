@@ -128,6 +128,11 @@ export type {
   RedisOperationResult,
   CommonInstrumentationContext,
   InstrumentationConfig,
+  EmailOperationContext,
+  EmailQueueOperationContext,
+  EmailTemplateOperationContext,
+  EmailProviderHealthContext,
+  IEmailInstrumentation,
 } from "./instrumentation/index.ts";
 
 // Export instrumentation implementation and utilities
@@ -180,6 +185,20 @@ export {
   getInstrumentationHealth,
   InstrumentationUtils,
   DEFAULT_INSTRUMENTATION_CONFIG,
+  
+  // Email instrumentation
+  EmailInstrumentation,
+  emailInstrumentation,
+  initializeEmailInstrumentation,
+  instrumentEmailOperation,
+  instrumentQueueOperation,
+  instrumentTemplateOperation,
+  recordEmailMetrics,
+  recordQueueMetrics,
+  recordTemplateMetrics,
+  recordProviderHealth,
+  getEmailInstrumentationHealth,
+  shutdownEmailInstrumentation,
 } from "./instrumentation/index.ts";
 
 // Export metrics interfaces and types
@@ -199,6 +218,12 @@ export type {
   InfrastructureHealth,
   IInfrastructureMetrics,
   MetricsServiceHealth,
+  EmailDeliveryMetricsContext,
+  EmailQueueDepthContext,
+  EmailProviderPerformanceContext,
+  EmailAlertingThresholds,
+  EmailAlertContext,
+  IEmailMetricsCollector,
 } from "./metrics/index.ts";
 
 // Export metrics implementation and utilities
@@ -240,6 +265,22 @@ export {
   recordWebRTCMetrics,
   recordDatabaseMetrics,
   recordCacheMetrics,
+  
+  // Email metrics
+  EmailMetricsCollector,
+  emailMetricsCollector,
+  initializeEmailMetricsCollector,
+  recordEmailDelivery,
+  recordEmailQueueDepth,
+  recordEmailProviderPerformance,
+  checkEmailAlertingThresholds,
+  getEmailDeliveryRateStats,
+  getEmailQueueStats,
+  getEmailProviderStats,
+  setEmailAlertingThresholds,
+  getEmailAlertingThresholds,
+  getEmailMetricsCollectorHealth,
+  shutdownEmailMetricsCollector,
 } from "./metrics/index.ts";
 
 // Export tracing interfaces and types

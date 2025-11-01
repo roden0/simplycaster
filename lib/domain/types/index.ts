@@ -10,3 +10,6 @@ export * from './events.ts';
 
 // RabbitMQ configuration types
 export * from './rabbitmq-config.ts';
+
+// Email types
+export * from './email.ts';

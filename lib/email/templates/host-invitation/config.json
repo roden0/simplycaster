@@ -1,0 +1,8 @@
+{
+  "id": "host-invitation",
+  "subject": "Welcome to SimplyCaster - Complete your host setup",
+  "requiredVariables": ["hostName", "invitedByName", "setupUrl", "expiresAt"],
+  "optionalVariables": ["invitedByEmail", "organizationName"],
+  "previewText": "Complete your SimplyCaster host account setup",
+  "description": "Email template for inviting new hosts to complete their account setup"
+}

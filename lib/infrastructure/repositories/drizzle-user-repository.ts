@@ -218,6 +218,8 @@ export class DrizzleUserRepository implements UserRepository {
       if (data.lockedUntil !== undefined) updateData.lockedUntil = data.lockedUntil;
       if (data.lastLoginAt !== undefined) updateData.lastLoginAt = data.lastLoginAt;
       if (data.lastLoginIp !== undefined) updateData.lastLoginIp = data.lastLoginIp;
+      if (data.passwordHash !== undefined) updateData.passwordHash = data.passwordHash;
+      if (data.passwordSalt !== undefined) updateData.passwordSalt = data.passwordSalt;
 
       const result = await this.db
         .update(users)

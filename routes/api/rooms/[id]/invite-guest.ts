@@ -143,7 +143,7 @@ export const handler = define.handlers({
       }
 
       // Success response
-      const { guest, room, inviteToken, inviteUrl, expiresAt, message } = result.data;
+      const { guest, room, inviteToken, inviteUrl, expiresAt, message, emailDelivery } = result.data;
 
       return new Response(
         JSON.stringify({
@@ -169,6 +169,12 @@ export const handler = define.handlers({
               url: inviteUrl,
               expiresAt: expiresAt.toISOString()
             },
+            emailDelivery: emailDelivery ? {
+              sent: emailDelivery.sent,
+              messageId: emailDelivery.messageId,
+              error: emailDelivery.error,
+              correlationId: emailDelivery.correlationId
+            } : undefined,
             message
           }
         }),
