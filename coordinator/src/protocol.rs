@@ -85,6 +85,9 @@ pub enum ClientMessage {
         take: u32,
         samples: u64,
         coordinator_time: f64,
+        /// The clock estimate `coordinator_time` was computed with, to tell clock noise from audio drift.
+        clock_offset_ms: f64,
+        clock_rtt_ms: f64,
     },
     /// Host only.
     Record,

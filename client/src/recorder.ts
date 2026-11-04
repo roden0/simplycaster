@@ -14,6 +14,19 @@ export type WorkerEvent =
   | { uploadLost: string }
   | { error: string };
 
+export type Part = {
+  fileName: string;
+  localStartMs: number;
+  startTime: number;
+  tone: boolean;
+  toneHz: number;
+  take: number;
+  invite: string;
+  /** The clock estimate T was converted with. */
+  clockOffsetMs: number;
+  clockRttMs: number;
+};
+
 /** What the browser tells us about the microphone; any of these means the Track may be losing sound. */
 export type MicState = { ended: boolean; muted: boolean; silent: boolean };
 
@@ -117,20 +130,23 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void, onMicSta
    * Records a Track part from `localStartMs`. `startTime` is the same instant on the
    * Coordinator clock; `tone` is true only for the part that starts at T.
    */
-  function start(
-    fileName: string,
-    localStartMs: number,
-    startTime: number,
-    tone: boolean,
-    toneHz: number,
-    take: number,
-    invite: string,
-  ) {
+  function start({ fileName, localStartMs, startTime, tone, toneHz, take, invite, clockOffsetMs, clockRttMs }: Part) {
     const startFrame = captureFrameAt(localStartMs);
     partStartFrame = startFrame;
     const outputLatencyMs = outputLatency() * 1000;
     const roundTripMs = calibratedRoundTrip === undefined ? undefined : calibratedRoundTrip * 1000;
-    worker.postMessage({ fileName, sampleRate: ctx.sampleRate, take, invite, startTime, outputLatencyMs, inputLatencyMs, roundTripMs });
+    worker.postMessage({
+      fileName,
+      sampleRate: ctx.sampleRate,
+      take,
+      invite,
+      startTime,
+      outputLatencyMs,
+      inputLatencyMs,
+      roundTripMs,
+      clockOffsetMs,
+      clockRttMs,
+    });
     capture.port.postMessage({ start: startFrame, tone });
     if (!tone) return;
     // Play this Participant's own tone, heard at T + delay.

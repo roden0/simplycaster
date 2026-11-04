@@ -42,7 +42,9 @@ type Part = {
   outputLatencyMs?: number | null;
   inputLatencyMs?: number | null;
   calibratedRoundTripMs?: number | null;
-  driftMarks: { samples: number; coordinatorTime: number }[];
+  clockOffsetMs?: number | null;
+  clockRttMs?: number | null;
+  driftMarks: { samples: number; coordinatorTime: number; clockOffsetMs?: number; clockRttMs?: number }[];
 };
 
 /** Onset (ms) and peak amplitude of a pure tone in `x`, searched in [fromMs, toMs). */
@@ -192,6 +194,20 @@ function main(dir: string, takeNumber: number) {
       );
     }
     console.log("  (a tone reaches the farther microphone later: ~1 ms per 34 cm of extra distance)");
+  }
+
+  console.log("Clock estimates (Coordinator minus local clock; its error is at most half the round trip):");
+  for (const p of parts) {
+    if (p.clockOffsetMs == null) {
+      console.log(`  ${p.file}: not recorded`);
+      continue;
+    }
+    const offsets = p.driftMarks.flatMap((m) => (m.clockOffsetMs === undefined ? [] : [m.clockOffsetMs - p.clockOffsetMs!]));
+    const rtts = p.driftMarks.flatMap((m) => (m.clockRttMs === undefined ? [] : [m.clockRttMs]));
+    const during = offsets.length
+      ? `; during the Take it moved ${fmt(Math.min(...offsets))} to ${fmt(Math.max(...offsets))}, round trips ${Math.min(...rtts).toFixed(1)}–${Math.max(...rtts).toFixed(1)} ms`
+      : "";
+    console.log(`  ${p.file}: at T ${p.clockOffsetMs.toFixed(1)} ms (round trip ${p.clockRttMs?.toFixed(1)} ms)${during}`);
   }
 
   console.log("Audio clock drift from drift marks (positive: audio clock runs fast):");

@@ -186,9 +186,9 @@ impl Room {
                             "outputLatencyMs": u.output_latency_ms,
                             "inputLatencyMs": u.input_latency_ms,
                             "calibratedRoundTripMs": u.calibrated_round_trip_ms,
-                            "driftMarks": u.drift_marks.iter()
-                                .map(|(samples, time)| serde_json::json!({ "samples": samples, "coordinatorTime": time }))
-                                .collect::<Vec<_>>(),
+                            "clockOffsetMs": u.clock_offset_ms,
+                            "clockRttMs": u.clock_rtt_ms,
+                            "driftMarks": u.drift_marks,
                         })
                     })
                     .collect();
@@ -342,6 +342,8 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
                 take,
                 samples,
                 coordinator_time,
+                clock_offset_ms,
+                clock_rtt_ms,
             } => {
                 let mut room = state.lock().unwrap();
                 // Marks belong to the part being recorded: the latest one of this Participant.
@@ -351,7 +353,12 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
                     .rev()
                     .find(|u| u.take == take && u.participant == name)
                 {
-                    u.drift_marks.push((samples, coordinator_time));
+                    u.drift_marks.push(tus::DriftMark {
+                        samples,
+                        coordinator_time,
+                        clock_offset_ms,
+                        clock_rtt_ms,
+                    });
                 }
             }
             ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {

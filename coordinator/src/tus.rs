@@ -4,6 +4,8 @@
 //! A Participant creates one upload per Track when it starts recording and appends
 //! to it with PATCH while the Track grows; the final PATCH carries `Upload-Length`.
 
+use serde::Serialize;
+
 use axum::{
     body::Body,
     extract::{Path, State},
@@ -16,6 +18,15 @@ use tokio::io::AsyncWriteExt;
 use crate::{AppState, MAX_TRACK_BYTES, invitation, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriftMark {
+    pub samples: u64,
+    pub coordinator_time: f64,
+    pub clock_offset_ms: f64,
+    pub clock_rtt_ms: f64,
+}
 
 pub struct Upload {
     /// Also the file stem on disk and the last URL segment.
@@ -35,7 +46,11 @@ pub struct Upload {
     pub calibrated_round_trip_ms: Option<f64>,
     pub offset: u64,
     /// `(samples, coordinator_time)` pairs reported while this part was recorded.
-    pub drift_marks: Vec<(u64, f64)>,
+    pub drift_marks: Vec<DriftMark>,
+    /// The Participant's clock estimate when the part started: offset to the Coordinator and the
+    /// round trip it was measured with (its error is at most half of it).
+    pub clock_offset_ms: Option<f64>,
+    pub clock_rtt_ms: Option<f64>,
     pub length: Option<u64>,
     /// A PATCH is in flight; reject a concurrent one instead of interleaving bytes.
     busy: bool,
@@ -104,6 +119,8 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
     let latency = |name| header_f64(&headers, name).filter(|ms| (0.0..10_000.0).contains(ms));
     let (output_latency_ms, input_latency_ms) = (latency("X-Output-Latency-Ms"), latency("X-Input-Latency-Ms"));
     let calibrated_round_trip_ms = latency("X-Round-Trip-Ms");
+    let clock_offset_ms = header_f64(&headers, "X-Clock-Offset-Ms").filter(|ms| ms.is_finite());
+    let clock_rtt_ms = latency("X-Clock-Rtt-Ms");
 
     let mut room = state.lock().unwrap();
     if take == 0 || take as usize > room.takes.len() {
@@ -133,6 +150,8 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         offset: 0,
         length,
         drift_marks: Vec::new(),
+        clock_offset_ms,
+        clock_rtt_ms,
         busy: false,
     });
     tus_with(StatusCode::CREATED, [("Location", format!("/uploads/{id}"))])

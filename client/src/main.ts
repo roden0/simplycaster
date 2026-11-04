@@ -7,9 +7,15 @@ import type { ServerMessage } from "./protocol/ServerMessage.ts";
 import type { ParticipantView } from "./protocol/ParticipantView.ts";
 import type { TrackView } from "./protocol/TrackView.ts";
 
-const CLOCK_PINGS = 10;
+const CLOCK_PINGS = 20;
+const CLOCK_PING_GAP_MS = 50;
 /** Re-measure the clock offset so the system clock's own drift is not carried along a long Take. */
-const CLOCK_RESYNC_MS = 60_000;
+const CLOCK_RESYNC_MS = 30_000;
+/**
+ * The estimate uses the fastest ping of the last two bursts: more chances of one that met no
+ * queue on the way. Older samples go stale as the clocks drift apart (~30 ppm seen: ~2 ms here).
+ */
+const CLOCK_WINDOW_MS = 65_000;
 const DRIFT_MARK_MS = 10_000;
 const RECONNECT_MS = 2000;
 /** When joining a Take after T, the new part starts this long after now. */
@@ -44,6 +50,9 @@ app.append(el("h2", t("participants")), rosterList);
 
 /** Coordinator clock minus local clock; known after the first clock sync. */
 let clockOffsetMs: number | undefined;
+/** Round trip of the ping the offset came from: the offset is wrong by at most half of it. */
+let clockRttMs: number | undefined;
+let clockSamples: ClockSample[] = [];
 let recorder: Recorder | undefined;
 let myName = "";
 let isHost = false;
@@ -75,12 +84,13 @@ function connect(invite: string) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws?invite=${encodeURIComponent(invite)}`);
   send = (msg) => ws.send(JSON.stringify(msg));
-  let samples: ClockSample[] = [];
   let opened = false;
+  /** Pongs still expected from the current burst. */
+  let burstLeft = 0;
   const syncClock = () => {
-    samples = [];
+    burstLeft = CLOCK_PINGS;
     for (let i = 0; i < CLOCK_PINGS; i++) {
-      setTimeout(() => send({ type: "ping", clientTime: localNow() }), i * 100);
+      setTimeout(() => send({ type: "ping", clientTime: localNow() }), i * CLOCK_PING_GAP_MS);
     }
   };
   let resync: ReturnType<typeof setInterval>;
@@ -108,10 +118,12 @@ function connect(invite: string) {
         if (isHost) renderHostControls();
         break;
       case "pong":
-        samples.push({ clientSend: msg.clientTime, clientReceive: localNow(), coordinatorTime: msg.coordinatorTime });
-        if (samples.length === CLOCK_PINGS) {
-          const estimate = estimateOffset(samples);
+        clockSamples.push({ clientSend: msg.clientTime, clientReceive: localNow(), coordinatorTime: msg.coordinatorTime });
+        clockSamples = clockSamples.filter((s) => s.clientSend > localNow() - CLOCK_WINDOW_MS);
+        if (--burstLeft === 0) {
+          const estimate = estimateOffset(clockSamples);
           clockOffsetMs = estimate.offsetMs;
+          clockRttMs = estimate.rttMs;
           send({ type: "clockOffset", ...estimate });
           startTrack();
         }
@@ -197,7 +209,17 @@ function startTrack() {
   if (late) localStart = localNow() + LATE_START_LEAD_MS;
   // Unique local name per part; the Coordinator names the files it stores.
   const fileName = `t${String(take).padStart(2, "0")}_${myName}_${Date.now()}.ogg`;
-  recorder.start(fileName, localStart, localStart + clockOffsetMs, !late, toneHz, take, invite!);
+  recorder.start({
+    fileName,
+    localStartMs: localStart,
+    startTime: localStart + clockOffsetMs,
+    tone: !late,
+    toneHz,
+    take,
+    invite: invite!,
+    clockOffsetMs,
+    clockRttMs: clockRttMs!,
+  });
   recordingTake = take;
   keepAwake();
   takeStatus.textContent = t(late ? "takeRejoined" : "takeStarting", { take });
@@ -206,7 +228,15 @@ function startTrack() {
 
 setInterval(() => {
   const mark = recordingTake && clockOffsetMs !== undefined ? recorder?.driftMark() : undefined;
-  if (mark) send({ type: "driftMark", take: recordingTake, samples: mark.samples, coordinatorTime: mark.localMs + clockOffsetMs! });
+  if (mark)
+    send({
+      type: "driftMark",
+      take: recordingTake,
+      samples: mark.samples,
+      coordinatorTime: mark.localMs + clockOffsetMs!,
+      clockOffsetMs: clockOffsetMs!,
+      clockRttMs: clockRttMs!,
+    });
 }, DRIFT_MARK_MS);
 
 // --- Keeping the microphone alive ---
