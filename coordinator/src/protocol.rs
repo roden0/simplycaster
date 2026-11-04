@@ -59,6 +59,13 @@ pub enum ClientMessage {
         offset_ms: f64,
         rtt_ms: f64,
     },
+    /// While recording: `samples` recorded in the current part at Coordinator time `coordinator_time` (ms).
+    /// Comparing marks over a long Take shows how far the Participant's audio clock drifts.
+    DriftMark {
+        take: u32,
+        samples: u64,
+        coordinator_time: f64,
+    },
     /// Host only.
     Record,
     /// Host only.

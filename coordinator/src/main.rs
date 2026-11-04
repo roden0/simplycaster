@@ -3,9 +3,9 @@ mod tus;
 
 use std::{
     io::Write,
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -31,7 +31,12 @@ use tower_http::{
 use protocol::{ClientMessage, ParticipantStatus, ParticipantView, Role, ServerMessage, TrackView};
 
 // shortcut: iteration 0a has one hard-coded Room with two Invitations; replace with real Rooms in 0b.
-const INVITATIONS: [(&str, Role); 2] = [("host", Role::Host), ("ana", Role::Guest)];
+// Each is (fixed name, role, env var with the link's secret token). Without the variable the
+// token is the fixed name itself (/i/host, /i/ana): fine locally, never on a public deployment.
+const INVITATIONS: [(&str, Role, &str); 2] = [
+    ("host", Role::Host, "HOST_INVITE"),
+    ("ana", Role::Guest, "GUEST_INVITE"),
+];
 /// Lead time so the TakeStarted message reaches everyone before T.
 const START_LEAD_MS: f64 = 1500.0;
 /// Lead time so everyone ends the Track at the same Coordinator instant.
@@ -68,7 +73,7 @@ impl Room {
     fn new(dir: PathBuf) -> Self {
         let participants = INVITATIONS
             .iter()
-            .map(|&(name, role)| Participant {
+            .map(|&(name, role, _)| Participant {
                 view: ParticipantView {
                     name: name.into(),
                     role,
@@ -156,6 +161,44 @@ impl Room {
         }
     }
 
+    /// Writes `room.json` next to the Tracks: what an editor needs to align them.
+    // shortcut: rewritten whole on every change; fine for a handful of Takes.
+    fn save_metadata(&self) {
+        let takes: Vec<_> = (1..=self.take)
+            .map(|take| {
+                let t = &self.takes[take as usize - 1];
+                let parts: Vec<_> = self
+                    .uploads
+                    .iter()
+                    .filter(|u| u.take == take)
+                    .map(|u| {
+                        serde_json::json!({
+                            "participant": u.participant,
+                            "part": u.part,
+                            "file": u.file(),
+                            "complete": u.is_complete(),
+                            "bytes": u.offset,
+                            "startTime": u.start_time,
+                            "startOffsetMs": u.start_time - t.start_time,
+                            "sampleRate": u.sample_rate,
+                            "driftMarks": u.drift_marks.iter()
+                                .map(|(samples, time)| serde_json::json!({ "samples": samples, "coordinatorTime": time }))
+                                .collect::<Vec<_>>(),
+                        })
+                    })
+                    .collect();
+                serde_json::json!({ "take": take, "startTime": t.start_time, "stopTime": t.stop_time, "tracks": parts })
+            })
+            .collect();
+        let meta = serde_json::json!({
+            "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
+            "takes": takes,
+        });
+        if let Err(e) = std::fs::write(self.dir.join("room.json"), serde_json::to_vec_pretty(&meta).unwrap()) {
+            eprintln!("cannot write room.json: {e}");
+        }
+    }
+
     fn broadcast_take_tracks(&self, take: u32) {
         self.broadcast(self.take_tracks_message(take));
     }
@@ -169,11 +212,24 @@ impl Room {
 
 type AppState = Arc<Mutex<Room>>;
 
-fn role_of(invite: &str) -> Option<Role> {
-    INVITATIONS
-        .iter()
-        .find(|(name, _)| *name == invite)
-        .map(|&(_, role)| role)
+fn invite_tokens() -> &'static [String] {
+    static TOKENS: OnceLock<Vec<String>> = OnceLock::new();
+    TOKENS.get_or_init(|| {
+        INVITATIONS
+            .iter()
+            .map(|(name, _, var)| std::env::var(var).unwrap_or_else(|_| name.to_string()))
+            .collect()
+    })
+}
+
+/// The Invitation behind a link token: (fixed name, role).
+fn invitation(token: &str) -> Option<(&'static str, Role)> {
+    let i = invite_tokens().iter().position(|t| t == token)?;
+    Some((INVITATIONS[i].0, INVITATIONS[i].1))
+}
+
+fn is_host(token: &str) -> bool {
+    invitation(token).is_some_and(|(_, role)| role == Role::Host)
 }
 
 fn now_ms() -> f64 {
@@ -186,10 +242,10 @@ struct WsParams {
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, Query(params): Query<WsParams>, State(state): State<AppState>) -> Response {
-    if role_of(&params.invite).is_none() {
+    let Some((name, _)) = invitation(&params.invite) else {
         return StatusCode::NOT_FOUND.into_response();
-    }
-    ws.on_upgrade(move |socket| handle_socket(socket, params.invite, state))
+    };
+    ws.on_upgrade(move |socket| handle_socket(socket, name.to_string(), state))
 }
 
 async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
@@ -257,6 +313,22 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
                 p.view.clock_rtt_ms = Some(rtt_ms);
                 room.broadcast_roster();
             }
+            ClientMessage::DriftMark {
+                take,
+                samples,
+                coordinator_time,
+            } => {
+                let mut room = state.lock().unwrap();
+                // Marks belong to the part being recorded: the latest one of this Participant.
+                if let Some(u) = room
+                    .uploads
+                    .iter_mut()
+                    .rev()
+                    .find(|u| u.take == take && u.participant == name)
+                {
+                    u.drift_marks.push((samples, coordinator_time));
+                }
+            }
             ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {
                 eprintln!("{name}: only the Host can record or stop");
             }
@@ -286,6 +358,7 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
                     let msg = ServerMessage::TakeStopped { take, stop_time };
                     room.broadcast(msg);
                     room.broadcast_take_tracks(room.take);
+                    room.save_metadata();
                     room.refresh_syncing();
                     room.broadcast_roster();
                 }
@@ -318,7 +391,7 @@ async fn download_track(
     Query(params): Query<WsParams>,
     State(state): State<AppState>,
 ) -> Result<Response, StatusCode> {
-    if role_of(&params.invite) != Some(Role::Host) {
+    if !is_host(&params.invite) {
         return Err(StatusCode::FORBIDDEN);
     }
     // Only files listed for the Take are served, so the URL cannot reach anything else on disk.
@@ -352,7 +425,7 @@ async fn download_take_zip(
     Query(params): Query<WsParams>,
     State(state): State<AppState>,
 ) -> Result<Response, StatusCode> {
-    if role_of(&params.invite) != Some(Role::Host) {
+    if !is_host(&params.invite) {
         return Err(StatusCode::FORBIDDEN);
     }
     let (dir, files) = {
@@ -368,9 +441,9 @@ async fn download_take_zip(
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut archive = zip::ZipWriter::new(&mut cursor);
         let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-        for file in files {
-            archive.start_file(file.as_str(), options)?;
-            archive.write_all(&std::fs::read(dir.join(&file))?)?;
+        for file in files.iter().map(String::as_str).chain(["room.json"]) {
+            archive.start_file(file, options)?;
+            archive.write_all(&std::fs::read(dir.join(file))?)?;
         }
         archive.finish()?;
         Ok(cursor.into_inner())
@@ -422,14 +495,24 @@ async fn main() {
         .with_state(Arc::new(Mutex::new(Room::new(room_dir.clone()))));
 
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(3000);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    // Loopback by default; the Docker image sets BIND=0.0.0.0 behind the platform's HTTPS proxy.
+    let ip: IpAddr = std::env::var("BIND")
+        .ok()
+        .and_then(|b| b.parse().ok())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let addr = SocketAddr::new(ip, port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!(
         "Coordinator listening on http://{addr}, storing Tracks in {}",
         room_dir.display()
     );
-    for (name, _) in INVITATIONS {
-        println!("  invitation: http://{addr}/i/{name}");
+    for ((name, _, var), token) in INVITATIONS.iter().zip(invite_tokens()) {
+        let source = if token == name {
+            format!("set {var} to make it secret")
+        } else {
+            format!("from {var}")
+        };
+        println!("  {name}: /i/{token}  ({source})");
     }
     axum::serve(listener, app).await.unwrap();
 }

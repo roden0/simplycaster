@@ -22,6 +22,19 @@ The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + 
 
 - `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. In iteration 0a the Room and its two links are hard-coded: `/i/host` (Host) and `/i/ana` (Guest).
 - `make test` runs the Rust tests and the client tests (`node --test`).
+- `make measure ROOM=coordinator/data/room-<id> TAKE=1` reports the sync error between the Tracks of a Take from real claps picked up by every microphone, and the audio clock drift from the drift marks (needs `ffmpeg`).
 - `make types` regenerates `client/src/protocol/` from the Rust message types with `ts-rs`. Never edit those files by hand; commit them with the Rust change.
 
 Recording APIs (microphone, WebCodecs, OPFS) only work in a secure context: use `localhost` or HTTPS when testing from other devices.
+
+## Deploying a test instance (Coolify)
+
+The root `Dockerfile` builds one image with the Coordinator and the client. On Coolify:
+
+- **Build pack**: Dockerfile; base directory `/`, Dockerfile location `/Dockerfile`.
+- **Ports exposes**: `3000`. The platform proxy terminates HTTPS, which browsers require for recording; WebSockets pass through it.
+- **Persistent storage**: mount a volume at `/data`, or Tracks are lost on every redeploy.
+- **Environment**: `HOST_INVITE` and `GUEST_INVITE` with long random tokens (e.g. `openssl rand -hex 16`). The links are then `https://<domain>/i/<token>`. Without them the links are the guessable `/i/host` and `/i/ana`, so never deploy publicly without them.
+
+The startup log lists both links.
+

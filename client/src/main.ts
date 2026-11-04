@@ -7,6 +7,9 @@ import type { ParticipantView } from "./protocol/ParticipantView.ts";
 import type { TrackView } from "./protocol/TrackView.ts";
 
 const CLOCK_PINGS = 10;
+/** Re-measure the clock offset so the system clock's own drift is not carried along a long Take. */
+const CLOCK_RESYNC_MS = 60_000;
+const DRIFT_MARK_MS = 10_000;
 const RECONNECT_MS = 2000;
 /** When joining a Take after T, the new part starts this long after now. */
 const LATE_START_LEAD_MS = 300;
@@ -64,14 +67,20 @@ function connect(invite: string) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws?invite=${encodeURIComponent(invite)}`);
   send = (msg) => ws.send(JSON.stringify(msg));
-  const samples: ClockSample[] = [];
+  let samples: ClockSample[] = [];
   let opened = false;
-
-  ws.onopen = () => {
-    opened = true;
+  const syncClock = () => {
+    samples = [];
     for (let i = 0; i < CLOCK_PINGS; i++) {
       setTimeout(() => send({ type: "ping", clientTime: localNow() }), i * 100);
     }
+  };
+  let resync: ReturnType<typeof setInterval>;
+
+  ws.onopen = () => {
+    opened = true;
+    syncClock();
+    resync = setInterval(syncClock, CLOCK_RESYNC_MS);
   };
 
   ws.onmessage = (event) => {
@@ -117,6 +126,7 @@ function connect(invite: string) {
   };
 
   ws.onclose = () => {
+    clearInterval(resync);
     // The Coordinator rejects unknown invitations before the upgrade, so the socket never opens.
     if (!opened) {
       status.textContent = t("invalidInvitation");
@@ -172,6 +182,11 @@ function startTrack() {
   takeStatus.textContent = t(late ? "takeRejoined" : "takeStarting", { take });
   if (!late) setTimeout(() => (takeStatus.textContent = t("takeRecording", { take })), localStart - localNow());
 }
+
+setInterval(() => {
+  const mark = recordingTake && clockOffsetMs !== undefined ? recorder?.driftMark() : undefined;
+  if (mark) send({ type: "driftMark", take: recordingTake, samples: mark.samples, coordinatorTime: mark.localMs + clockOffsetMs! });
+}, DRIFT_MARK_MS);
 
 // Uploads not yet confirmed by the Coordinator, so a reloaded page can finish them (CU7).
 type PendingUploads = Record<string, { uploadUrl: string; take: number; invite: string }>;

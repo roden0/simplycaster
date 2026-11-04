@@ -13,7 +13,7 @@ use axum::{
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::{AppState, MAX_TRACK_BYTES, role_of, track_stem};
+use crate::{AppState, MAX_TRACK_BYTES, invitation, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
 
@@ -25,7 +25,11 @@ pub struct Upload {
     pub part: u32,
     /// Coordinator time of the part's first sample (ms), sent by the client as `X-Track-Start`.
     pub start_time: f64,
+    /// Rate of the Participant's audio clock, the unit of `drift_marks` samples.
+    pub sample_rate: u32,
     pub offset: u64,
+    /// `(samples, coordinator_time)` pairs reported while this part was recorded.
+    pub drift_marks: Vec<(u64, f64)>,
     pub length: Option<u64>,
     /// A PATCH is in flight; reject a concurrent one instead of interleaving bytes.
     busy: bool,
@@ -57,8 +61,8 @@ fn tus_with<const N: usize>(status: StatusCode, headers: [(&'static str, String)
 
 /// The Participant's Invitation, sent as a header on every tus request.
 fn invite(headers: &HeaderMap) -> Option<String> {
-    let name = headers.get("X-Invite")?.to_str().ok()?;
-    role_of(name).map(|_| name.to_string())
+    let token = headers.get("X-Invite")?.to_str().ok()?;
+    invitation(token).map(|(name, _)| name.to_string())
 }
 
 fn header_u64(headers: &HeaderMap, name: &str) -> Option<u64> {
@@ -84,6 +88,9 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
     else {
         return tus(StatusCode::BAD_REQUEST);
     };
+    let Some(sample_rate) = header_u64(&headers, "X-Sample-Rate").and_then(|r| u32::try_from(r).ok()) else {
+        return tus(StatusCode::BAD_REQUEST);
+    };
 
     let mut room = state.lock().unwrap();
     if take == 0 || take as usize > room.takes.len() {
@@ -106,8 +113,10 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         participant: name,
         part,
         start_time,
+        sample_rate,
         offset: 0,
         length,
+        drift_marks: Vec::new(),
         busy: false,
     });
     tus_with(StatusCode::CREATED, [("Location", format!("/uploads/{id}"))])
@@ -192,6 +201,7 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         room.refresh_syncing();
         room.broadcast_roster();
         room.broadcast_take_tracks(take);
+        room.save_metadata();
     }
     tus_with(StatusCode::NO_CONTENT, [("Upload-Offset", offset.to_string())])
 }

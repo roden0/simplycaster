@@ -1,4 +1,4 @@
-.PHONY: run build types test client clean
+.PHONY: run build types test client clean measure
 
 # Build everything and start the Coordinator on http://127.0.0.1:3000
 run: build
@@ -20,7 +20,12 @@ client/node_modules: client/package.json
 
 test: types client/node_modules
 	cd client && npm test
+	node --test tools/*.test.ts
 
 clean:
 	cd coordinator && cargo clean
 	rm -rf client/dist client/node_modules
+
+# UP2: clap alignment error and clock drift of a Take, e.g. make measure ROOM=coordinator/data/room-1793805495 TAKE=1
+measure:
+	node tools/measure-sync.ts $(ROOM) $(TAKE)

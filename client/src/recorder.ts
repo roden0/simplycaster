@@ -28,6 +28,8 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
   worker.onmessage = ({ data }) => onEvent(data);
 
   let source: MediaStreamAudioSourceNode | undefined;
+  /** First frame of the part being recorded, for drift marks. */
+  let partStartFrame: number | undefined;
 
   async function openMicrophone(deviceId?: string) {
     source?.mediaStream.getTracks().forEach((tr) => tr.stop());
@@ -62,6 +64,7 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
    */
   function start(fileName: string, localStartMs: number, startTime: number, tone: boolean, take: number, invite: string) {
     const startFrame = frameAt(localStartMs);
+    partStartFrame = startFrame;
     worker.postMessage({ fileName, sampleRate: ctx.sampleRate, take, invite, startTime });
     capture.port.postMessage({ start: startFrame, tone });
     if (!tone) return;
@@ -74,6 +77,7 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
   }
 
   function stop(localStopMs: number) {
+    partStartFrame = undefined;
     capture.port.postMessage({ stop: frameAt(localStopMs) });
   }
 
@@ -83,10 +87,18 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
     return buf.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
   }
 
+  /** Samples recorded in the current part so far, and the local wall-clock time of that sample. */
+  function driftMark() {
+    const { contextTime, performanceTime } = ctx.getOutputTimestamp();
+    if (partStartFrame === undefined || !performanceTime) return;
+    const samples = Math.round(contextTime! * ctx.sampleRate) - partStartFrame;
+    if (samples > 0) return { samples, localMs: performance.timeOrigin + performanceTime };
+  }
+
   /** Finishes uploads left pending by an earlier page (CU7). */
   function resumeUpload(fileName: string, uploadUrl: string, take: number, invite: string) {
     worker.postMessage({ resume: fileName, uploadUrl, take, invite });
   }
 
-  return { openMicrophone, start, stop, resumeUpload, level };
+  return { openMicrophone, start, stop, resumeUpload, driftMark, level };
 }

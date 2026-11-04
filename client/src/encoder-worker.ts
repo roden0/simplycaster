@@ -88,7 +88,10 @@ async function begin({ fileName, sampleRate, take, invite, startTime }: Begin) {
     ),
   });
   rec = { output, take, sampleRate, frames: 0 };
-  startUpload(file, fileName, take, invite, { endpoint: `${self.location.origin}/takes/${take}/uploads`, startTime });
+  startUpload(file, fileName, take, invite, {
+    endpoint: `${self.location.origin}/takes/${take}/uploads`,
+    creationHeaders: { "X-Track-Start": String(startTime), "X-Sample-Rate": String(sampleRate) },
+  });
 }
 
 /** A Track part whose upload an earlier page left unfinished: the file is complete on OPFS. */
@@ -104,13 +107,16 @@ async function resume({ resume: fileName, uploadUrl, take, invite }: { resume: s
   startUpload(file, fileName, take, invite, { uploadUrl });
 }
 
-type Target = { endpoint: string; startTime: number } | { uploadUrl: string };
+type Target = { endpoint: string; creationHeaders: Record<string, string> } | { uploadUrl: string };
 
 function startUpload(file: TrackFile, fileName: string, take: number, invite: string, target: Target) {
+  const where = "uploadUrl" in target ? { uploadUrl: target.uploadUrl } : { endpoint: target.endpoint };
+  // Only read by the Coordinator on creation; harmless on the other requests.
+  const extraHeaders = "creationHeaders" in target ? target.creationHeaders : {};
   // The input only reaches our own fileReader, so its type does not matter to tus-js-client.
   const upload = new Upload(file as unknown as Blob, {
-    ...target,
-    headers: { "X-Invite": invite, ...("startTime" in target && { "X-Track-Start": String(target.startTime) }) },
+    ...where,
+    headers: { "X-Invite": invite, ...extraHeaders },
     uploadLengthDeferred: true,
     chunkSize: UPLOAD_CHUNK_BYTES,
     retryDelays: RETRY_DELAYS_MS,
