@@ -1,0 +1,44 @@
+// Message catalog: `en` is the base locale. Add other locales with the same keys.
+const en = {
+  appTitle: "SimplyCaster",
+  buildInfo: "build {build} UTC",
+  noInvitation: "Open the personal link from your invitation to join the Room.",
+  invalidInvitation: "This invitation is not valid.",
+  joinedAs: "You are {name} ({role})",
+  connecting: "Connecting…",
+  reconnecting: "Connection lost. Reconnecting…",
+  enableMicrophone: "Enable microphone",
+  microphone: "Microphone",
+  inputLevel: "Input level",
+  participants: "Participants",
+  roleHost: "Host",
+  roleGuest: "Guest",
+  statusConnected: "connected",
+  statusDisconnected: "disconnected",
+  statusSyncing: "syncing",
+  clockOffset: "clock offset {offset} ms (round trip {rtt} ms)",
+  clockPending: "measuring clock…",
+  micError: "Could not open the microphone: {error}",
+  record: "Record",
+  stop: "Stop",
+  takeStarting: "Take {take} starts in a moment…",
+  takeRecording: "Recording take {take}",
+  takeStopped: "Take {take} stopped",
+  notReadyToRecord: "Take {take} is being recorded: enable your microphone to join it.",
+  takeRejoined: "Recording take {take} (continuing after reconnecting)",
+  recordingError: "Recording failed: {error}",
+  trackSyncing: "Sending the rest of your Track for take {take}…",
+  trackUploaded: "Your Track for take {take} was sent.",
+  takeHeading: "Take {take}",
+  gatheringRecordings: "Gathering recordings… ({received}/{expected})",
+  recordingsGathered: "All recordings gathered.",
+  trackEntry: "{file} ({mb} MB)",
+  trackPartEntry: "{file} ({mb} MB, starts {seconds} s after the Sync tone)",
+  downloadAllZip: "Download all (zip)",
+};
+
+export type MessageKey = keyof typeof en;
+
+export function t(key: MessageKey, params: Record<string, string | number> = {}): string {
+  return en[key].replace(/\{(\w+)\}/g, (_, p) => String(params[p] ?? `{${p}}`));
+}

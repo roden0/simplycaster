@@ -21,3 +21,7 @@
 | Textos de la UI | Catálogo de mensajes por idioma (`en` por defecto) y una función de traducción; sin librería hasta que haga falta |
 | Tareas | `Makefile` en la raíz |
 | Navegadores | Chrome, Firefox y Safari 26+ (requiere HTTPS) |
+
+## Comandos
+
+`make run` (compila y arranca en http://127.0.0.1:3000), `make test`, `make types` (regenera `client/src/protocol/` desde Rust; no editar a mano). Detalle en [CONTRIBUTING.md](CONTRIBUTING.md).
