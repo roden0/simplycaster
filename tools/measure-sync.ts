@@ -1,9 +1,10 @@
 // UP2: measures how well the Tracks of a Take line up, for a test with every Participant
 // in one room, without headphones.
 //
-// - Acoustic tones: each browser plays its own tone (its own frequency) at T + 200 ms. Where each
-//   tone lands in each Track shows that machine's uncorrected latency: its own tone should land at
-//   200 ms; any difference is the error of that Track's start.
+// - Acoustic tones: each browser plays its own tone (its own frequency) at T + 200 ms. One tone is
+//   one physical sound, so where it lands in two Tracks gives their offset directly, whatever
+//   latency the browsers got wrong. (A tone's lateness in its own Track mixes two errors: the
+//   Track's start and when that browser actually played it.)
 // - Audio alignment: cross-correlating the sound every microphone picked up (voices, claps) gives
 //   the real offset between Tracks, independent of the tones.
 // - Drift: from the drift marks, how fast each audio clock runs against the Coordinator.
@@ -19,7 +20,7 @@ import { AUDIBLE_TONE_DELAY_SECONDS, TONE_SECONDS } from "../client/src/sync-ton
 
 const TONE_RATE = 48_000;
 /** Tones are looked for from the end of the written tone up to this point (ms after T). */
-const TONE_SEARCH_END_MS = 2500;
+const TONE_SEARCH_END_MS = 1200;
 /** Below this amplitude a tone counts as not heard (about -50 dBFS). */
 const TONE_MIN_AMPLITUDE = 0.003;
 /** Envelope resolution for the alignment: 1 sample per ms. */
@@ -143,20 +144,27 @@ function main(dir: string, takeNumber: number) {
   const tones = firsts.filter((p) => p.toneHz).map((p) => ({ who: p.participant, hz: p.toneHz! }));
   const expectedMs = AUDIBLE_TONE_DELAY_SECONDS * 1000;
 
-  console.log(`Take ${takeNumber}: acoustic tones, ms after T in each Track (expected ${expectedMs} ms)`);
-  const ownError = new Map<string, number>();
+  console.log(`Take ${takeNumber}: acoustic tones, ms after T in each Track (played at ${expectedMs} ms)`);
+  /** onsets.get(track participant).get(tone participant) */
+  const onsets = new Map<string, Map<string, number>>();
   for (const p of firsts) {
     const x = decode(join(dir, p.file), TONE_RATE, TONE_SEARCH_END_MS / 1000 + 0.1);
     const cells = tones.map(({ who, hz }) => {
       const found = toneOnset(x, hz, TONE_SECONDS * 1000 + 10, TONE_SEARCH_END_MS);
       if (!found) return `${who} ${hz} Hz: not heard`;
-      if (who === p.participant) ownError.set(who, found.onsetMs - expectedMs);
+      onsets.set(p.participant, (onsets.get(p.participant) ?? new Map()).set(who, found.onsetMs));
       return `${who} ${hz} Hz: ${found.onsetMs.toFixed(1)} ms (${(20 * Math.log10(found.peak)).toFixed(0)} dBFS)`;
     });
     const reported = `reported latency out ${p.outputLatencyMs?.toFixed(1) ?? "?"} / in ${p.inputLatencyMs?.toFixed(1) ?? "?"} ms`;
     console.log(`  ${p.file}: ${cells.join("  ")}  [${reported}]`);
   }
-  for (const [who, e] of ownError) console.log(`  ${who}: start error from own tone ${fmt(e)}`);
+  /** Offset of `b` behind `a` from each tone both Tracks heard. */
+  const toneLags = (a: string, b: string) =>
+    tones.flatMap(({ who }) => {
+      const inA = onsets.get(a)?.get(who);
+      const inB = onsets.get(b)?.get(who);
+      return inA === undefined || inB === undefined ? [] : [`${fmt(inB - inA)} by ${who}'s tone`];
+    });
 
   const [ref, ...others] = firsts;
   if (ref && others.length) {
@@ -175,13 +183,13 @@ function main(dir: string, takeNumber: number) {
       }
       const m = median(lags);
       const spread = Math.max(...lags) - Math.min(...lags);
-      const predicted = (ownError.get(p.participant) ?? NaN) - (ownError.get(ref.participant) ?? NaN);
+      const byTones = toneLags(ref.participant, p.participant);
       console.log(
         `  ${p.participant}: ${fmt(m)} (median of ${lags.length} windows, spread ${spread} ms)` +
-          (Number.isNaN(predicted) ? "" : `; own tones predict ${fmt(predicted)}`),
+          (byTones.length ? `; tones: ${byTones.join(", ")}` : ""),
       );
     }
-    console.log("  (sound travels ~1 ms per 34 cm: keep the microphones close together)");
+    console.log("  (a tone reaches the farther microphone later: ~1 ms per 34 cm of extra distance)");
   }
 
   console.log("Audio clock drift from drift marks (positive: audio clock runs fast):");
