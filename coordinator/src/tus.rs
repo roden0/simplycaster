@@ -30,6 +30,9 @@ pub struct Upload {
     /// Latencies the browser reported and compensated when choosing the first sample (ms).
     pub output_latency_ms: Option<f64>,
     pub input_latency_ms: Option<f64>,
+    /// Measured at join (clicks through the speakers back into the microphone); used instead of the
+    /// reported latencies when present.
+    pub calibrated_round_trip_ms: Option<f64>,
     pub offset: u64,
     /// `(samples, coordinator_time)` pairs reported while this part was recorded.
     pub drift_marks: Vec<(u64, f64)>,
@@ -100,6 +103,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
     };
     let latency = |name| header_f64(&headers, name).filter(|ms| (0.0..10_000.0).contains(ms));
     let (output_latency_ms, input_latency_ms) = (latency("X-Output-Latency-Ms"), latency("X-Input-Latency-Ms"));
+    let calibrated_round_trip_ms = latency("X-Round-Trip-Ms");
 
     let mut room = state.lock().unwrap();
     if take == 0 || take as usize > room.takes.len() {
@@ -125,6 +129,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         sample_rate,
         output_latency_ms,
         input_latency_ms,
+        calibrated_round_trip_ms,
         offset: 0,
         length,
         drift_marks: Vec::new(),

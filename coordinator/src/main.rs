@@ -185,6 +185,7 @@ impl Room {
                             "toneHz": tone_hz(&u.participant),
                             "outputLatencyMs": u.output_latency_ms,
                             "inputLatencyMs": u.input_latency_ms,
+                            "calibratedRoundTripMs": u.calibrated_round_trip_ms,
                             "driftMarks": u.drift_marks.iter()
                                 .map(|(samples, time)| serde_json::json!({ "samples": samples, "coordinatorTime": time }))
                                 .collect::<Vec<_>>(),
@@ -265,8 +266,11 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
         room.next_conn_id += 1;
         let conn_id = room.next_conn_id;
         let p = room.find(&name).unwrap();
-        // A new connection with the same Invitation replaces the old one (reconnect, CU7).
-        p.conn = Some((conn_id, tx.clone()));
+        // A new connection with the same Invitation replaces the old one (reconnect, CU7);
+        // the old one is told and closed, so it does not linger without updates.
+        if let Some((_, old)) = p.conn.replace((conn_id, tx.clone())) {
+            let _ = old.send(ServerMessage::Replaced);
+        }
         p.view.status = ParticipantStatus::Connected;
         p.view.mic_problem = None;
         let _ = tx.send(ServerMessage::Welcome {
@@ -300,6 +304,10 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
         while let Some(msg) = rx.recv().await {
             let text = serde_json::to_string(&msg).unwrap();
             if sink.send(Message::Text(text.into())).await.is_err() {
+                break;
+            }
+            if matches!(msg, ServerMessage::Replaced) {
+                let _ = sink.close().await;
                 break;
             }
         }

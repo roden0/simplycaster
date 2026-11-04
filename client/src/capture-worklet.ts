@@ -25,6 +25,8 @@ class CaptureProcessor extends AudioWorkletProcessor {
   /** Consecutive recorded frames that were exactly zero on every channel. */
   zeroRun = 0;
   silent = false;
+  /** Raw input being collected for a latency calibration: frames from `from` into `buffer`. */
+  calibration?: { from: number; buffer: Float32Array };
 
   constructor() {
     super();
@@ -40,6 +42,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
         this.zeroRun = 0;
       }
       if (data.stop !== undefined) this.stop = data.stop;
+      if (data.calibrate) this.calibration = { from: data.calibrate.from, buffer: new Float32Array(data.calibrate.frames) };
     };
   }
 
@@ -47,6 +50,18 @@ class CaptureProcessor extends AudioWorkletProcessor {
   setSilent(silent: boolean) {
     if (silent !== this.silent) this.port.postMessage({ silent });
     this.silent = silent;
+  }
+
+  collectCalibration(channel: Float32Array | undefined) {
+    const { from, buffer } = this.calibration!;
+    for (let i = 0; i < 128; i++) {
+      const k = currentFrame + i - from;
+      if (k >= 0 && k < buffer.length) buffer[k] = channel?.[i] ?? 0;
+    }
+    if (currentFrame + 128 - from >= buffer.length) {
+      this.port.postMessage({ calibration: buffer }, [buffer.buffer]);
+      this.calibration = undefined;
+    }
   }
 
   flush() {
@@ -60,6 +75,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
 
   process(inputs: Float32Array[][]) {
     const input = inputs[0];
+    if (this.calibration) this.collectCalibration(input[0]);
     if (!this.out || this.start === Infinity || input.length === 0) return true;
     if (this.chunk.length === 0) this.chunk = input.map(() => new Float32Array(CHUNK_FRAMES));
     const toneFrames = this.tone ? Math.round(TONE_SECONDS * sampleRate) : 0;

@@ -8,4 +8,4 @@ export type ServerMessage = { "type": "welcome", name: string, role: Role,
  * Frequency of this Participant's audible Sync tone: distinct per Participant, so each
  * Track shows whose speakers it picked up (calibration tests in one room).
  */
-toneHz: number, } | { "type": "pong", clientTime: number, coordinatorTime: number, } | { "type": "roster", participants: Array<ParticipantView>, } | { "type": "takeStarted", take: number, startTime: number, } | { "type": "takeStopped", take: number, stopTime: number, } | { "type": "takeTracks", take: number, expected: Array<string>, pending: Array<string>, tracks: Array<TrackView>, };
+toneHz: number, } | { "type": "pong", clientTime: number, coordinatorTime: number, } | { "type": "roster", participants: Array<ParticipantView>, } | { "type": "takeStarted", take: number, startTime: number, } | { "type": "takeStopped", take: number, stopTime: number, } | { "type": "replaced" } | { "type": "takeTracks", take: number, expected: Array<string>, pending: Array<string>, tracks: Array<TrackView>, };

@@ -121,6 +121,8 @@ pub enum ServerMessage {
         take: u32,
         stop_time: f64,
     },
+    /// The same Invitation connected from somewhere else; this connection is closed and must not reconnect.
+    Replaced,
     /// Complete Track parts of a Take; `pending` are the Participants who recorded it and still have audio to upload.
     TakeTracks {
         take: u32,

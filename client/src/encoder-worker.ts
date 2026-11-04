@@ -69,9 +69,10 @@ type Begin = {
   startTime: number;
   outputLatencyMs: number;
   inputLatencyMs: number;
+  roundTripMs?: number;
 };
 
-async function begin({ fileName, sampleRate, take, invite, startTime, outputLatencyMs, inputLatencyMs }: Begin) {
+async function begin({ fileName, sampleRate, take, invite, startTime, outputLatencyMs, inputLatencyMs, roundTripMs }: Begin) {
   const handle = await openTrack(fileName, true);
   handle.truncate(0);
   const file: TrackFile = { handle, size: 0, finished: false, waiters: [] };
@@ -103,6 +104,7 @@ async function begin({ fileName, sampleRate, take, invite, startTime, outputLate
       "X-Sample-Rate": String(sampleRate),
       "X-Output-Latency-Ms": String(outputLatencyMs),
       "X-Input-Latency-Ms": String(inputLatencyMs),
+      ...(roundTripMs !== undefined && { "X-Round-Trip-Ms": String(roundTripMs) }),
     },
   });
 }

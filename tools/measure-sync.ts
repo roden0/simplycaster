@@ -41,6 +41,7 @@ type Part = {
   toneHz?: number;
   outputLatencyMs?: number | null;
   inputLatencyMs?: number | null;
+  calibratedRoundTripMs?: number | null;
   driftMarks: { samples: number; coordinatorTime: number }[];
 };
 
@@ -155,7 +156,8 @@ function main(dir: string, takeNumber: number) {
       onsets.set(p.participant, (onsets.get(p.participant) ?? new Map()).set(who, found.onsetMs));
       return `${who} ${hz} Hz: ${found.onsetMs.toFixed(1)} ms (${(20 * Math.log10(found.peak)).toFixed(0)} dBFS)`;
     });
-    const reported = `reported latency out ${p.outputLatencyMs?.toFixed(1) ?? "?"} / in ${p.inputLatencyMs?.toFixed(1) ?? "?"} ms`;
+    const calibrated = p.calibratedRoundTripMs == null ? "not calibrated" : `calibrated ${p.calibratedRoundTripMs.toFixed(1)} ms`;
+    const reported = `reported out ${p.outputLatencyMs?.toFixed(1) ?? "?"} / in ${p.inputLatencyMs?.toFixed(1) ?? "?"} ms, ${calibrated}`;
     console.log(`  ${p.file}: ${cells.join("  ")}  [${reported}]`);
   }
   /** Offset of `b` behind `a` from each tone both Tracks heard. */

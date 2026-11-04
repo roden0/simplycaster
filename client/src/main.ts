@@ -32,6 +32,7 @@ const status = app.appendChild(el("p"));
 status.setAttribute("role", "status");
 const micRow = app.appendChild(el("p"));
 const meterRow = app.appendChild(el("p"));
+const calibrationRow = app.appendChild(el("p"));
 const takeControls = app.appendChild(el("p"));
 const micWarning = app.appendChild(el("p"));
 micWarning.setAttribute("role", "alert");
@@ -46,6 +47,8 @@ let clockOffsetMs: number | undefined;
 let recorder: Recorder | undefined;
 let myName = "";
 let isHost = false;
+/** This Invitation was opened somewhere else, which took over the connection. */
+let replaced = false;
 /** Frequency of this Participant's audible Sync tone, from the Coordinator. */
 let toneHz = 1000;
 /** The Take being recorded in the Room, from takeStarted until takeStopped. */
@@ -129,6 +132,10 @@ function connect(invite: string) {
         allowSleep();
         takeStatus.textContent = t("takeStopped", { take: msg.take });
         break;
+      case "replaced":
+        replaced = true;
+        status.textContent = t("openedElsewhere");
+        break;
       case "takeTracks":
         if (isHost) renderTakeTracks(msg.take, msg.expected, msg.pending, msg.tracks);
         break;
@@ -142,6 +149,8 @@ function connect(invite: string) {
       status.textContent = t("invalidInvitation");
       return;
     }
+    // Reconnecting would only take the Invitation back from the other window.
+    if (replaced) return;
     status.textContent = t("reconnecting");
     setTimeout(() => connect(invite), RECONNECT_MS);
   };
@@ -333,6 +342,33 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
   }
 }
 
+// --- Latency calibration (CU3) ---
+
+let latencyText: HTMLElement | undefined;
+
+function showLatency(failed = false) {
+  const { ms, calibrated } = recorder!.latency();
+  const key = calibrated ? "latencyCalibrated" : failed ? "calibrationFailed" : "latencyEstimated";
+  latencyText!.textContent = t(key, { ms: ms.toFixed(0) });
+}
+
+function setupCalibration(rec: Recorder) {
+  const button = el("button", t("calibrate"));
+  latencyText = el("span");
+  latencyText.setAttribute("role", "status");
+  button.onclick = async () => {
+    // Clicks during a Take would end up in the Track.
+    if (recordingTake) return;
+    button.disabled = true;
+    latencyText!.textContent = t("calibrating");
+    const trip = await rec.calibrate();
+    button.disabled = false;
+    showLatency(trip === undefined);
+  };
+  calibrationRow.replaceChildren(button, " ", latencyText, el("br"), el("small", t("calibrateHint")));
+  showLatency();
+}
+
 // --- Microphone choice and input level (CU3) ---
 
 async function setupMicrophone() {
@@ -363,8 +399,12 @@ async function setupMicrophone() {
         return o;
       }),
     );
-    select.onchange = () => rec.openMicrophone(select.value);
+    select.onchange = async () => {
+      await rec.openMicrophone(select.value);
+      showLatency(); // a new microphone needs a new calibration
+    };
     recorder = rec;
+    setupCalibration(rec);
     for (const [fileName, p] of Object.entries(pendingUploads())) {
       if (p.invite === invite) rec.resumeUpload(fileName, p.uploadUrl, p.take, p.invite);
     }
