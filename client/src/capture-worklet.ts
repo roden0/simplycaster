@@ -11,6 +11,8 @@ declare class AudioWorkletProcessor {
 declare function registerProcessor(name: string, ctor: new () => AudioWorkletProcessor): void;
 
 const CHUNK_FRAMES = 4800;
+/** This much exact digital silence means the microphone is not delivering sound. */
+const SILENT_SECONDS = 2;
 
 class CaptureProcessor extends AudioWorkletProcessor {
   out?: MessagePort;
@@ -20,6 +22,9 @@ class CaptureProcessor extends AudioWorkletProcessor {
   tone = false;
   chunk: Float32Array[] = [];
   filled = 0;
+  /** Consecutive recorded frames that were exactly zero on every channel. */
+  zeroRun = 0;
+  silent = false;
 
   constructor() {
     super();
@@ -31,9 +36,17 @@ class CaptureProcessor extends AudioWorkletProcessor {
         this.stop = Infinity;
         this.chunk = [];
         this.filled = 0;
+        this.setSilent(false);
+        this.zeroRun = 0;
       }
       if (data.stop !== undefined) this.stop = data.stop;
     };
+  }
+
+  /** Tells the main thread when the microphone goes silent or comes back. */
+  setSilent(silent: boolean) {
+    if (silent !== this.silent) this.port.postMessage({ silent });
+    this.silent = silent;
   }
 
   flush() {
@@ -58,11 +71,18 @@ class CaptureProcessor extends AudioWorkletProcessor {
         this.flush();
         this.out.postMessage({ end: true });
         this.start = Infinity;
+        this.setSilent(false);
         return true;
       }
       const k = frame - this.start;
       const tone = k < toneFrames ? 0.5 * Math.sin((2 * Math.PI * TONE_HZ * k) / sampleRate) : undefined;
       this.chunk.forEach((ch, c) => (ch[this.filled] = tone ?? input[c]?.[i] ?? 0));
+      if (tone === undefined) {
+        const zero = input.every((ch) => ch[i] === 0);
+        this.zeroRun = zero ? this.zeroRun + 1 : 0;
+        if (!zero) this.setSilent(false);
+        else if (this.zeroRun === SILENT_SECONDS * sampleRate) this.setSilent(true);
+      }
       if (++this.filled === CHUNK_FRAMES) this.flush();
     }
     return true;

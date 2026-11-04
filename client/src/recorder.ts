@@ -13,7 +13,10 @@ export type WorkerEvent =
   | { uploadLost: string }
   | { error: string };
 
-export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
+/** What the browser tells us about the microphone; any of these means the Track may be losing sound. */
+export type MicState = { ended: boolean; muted: boolean; silent: boolean };
+
+export async function createRecorder(onEvent: (e: WorkerEvent) => void, onMicState: (s: MicState) => void) {
   // Must be called from a user gesture, or autoplay policy keeps the context suspended.
   const ctx = new AudioContext();
   await ctx.audioWorklet.addModule(workletUrl);
@@ -26,6 +29,9 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
   capture.port.postMessage({ port: channel.port1 }, [channel.port1]);
   worker.postMessage({ port: channel.port2 }, [channel.port2]);
   worker.onmessage = ({ data }) => onEvent(data);
+  const mic: MicState = { ended: false, muted: false, silent: false };
+  const micChanged = (change: Partial<MicState>) => onMicState(Object.assign(mic, change));
+  capture.port.onmessage = ({ data }) => micChanged({ silent: data.silent });
 
   let source: MediaStreamAudioSourceNode | undefined;
   /** From sound reaching the microphone to the browser handing it over (ms), when the browser reports it. */
@@ -45,7 +51,12 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
         autoGainControl: false,
       },
     });
-    const settings = stream.getAudioTracks()[0].getSettings() as MediaTrackSettings & { latency?: number };
+    const track = stream.getAudioTracks()[0];
+    track.onmute = () => micChanged({ muted: true });
+    track.onunmute = () => micChanged({ muted: false });
+    track.onended = () => micChanged({ ended: true });
+    micChanged({ ended: false, muted: track.muted });
+    const settings = track.getSettings() as MediaTrackSettings & { latency?: number };
     inputLatencyMs = (settings.latency ?? 0) * 1000;
     source = ctx.createMediaStreamSource(stream);
     source.connect(analyser);

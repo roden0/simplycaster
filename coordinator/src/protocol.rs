@@ -20,6 +20,21 @@ pub enum ParticipantStatus {
     Disconnected,
 }
 
+/// Why a Participant's microphone may not be reaching their Track.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MicProblem {
+    /// The microphone track ended (device unplugged, permission revoked).
+    Ended,
+    /// The system muted the microphone track.
+    Muted,
+    /// The page is in the background; mobile systems often cut the microphone then.
+    Hidden,
+    /// Seconds of exact digital silence while recording.
+    Silent,
+}
+
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -33,6 +48,7 @@ pub struct ParticipantView {
     pub clock_rtt_ms: Option<f64>,
     /// Some of this Participant's Tracks still have audio pending upload.
     pub syncing: bool,
+    pub mic_problem: Option<MicProblem>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -58,6 +74,10 @@ pub enum ClientMessage {
     ClockOffset {
         offset_ms: f64,
         rtt_ms: f64,
+    },
+    /// The Participant's microphone status changed; `None` when it is fine again.
+    MicStatus {
+        problem: Option<MicProblem>,
     },
     /// While recording: `samples` recorded in the current part at Coordinator time `coordinator_time` (ms).
     /// Comparing marks over a long Take shows how far the Participant's audio clock drifts.

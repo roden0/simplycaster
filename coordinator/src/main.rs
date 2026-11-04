@@ -81,6 +81,7 @@ impl Room {
                     clock_offset_ms: None,
                     clock_rtt_ms: None,
                     syncing: false,
+                    mic_problem: None,
                 },
                 conn: None,
             })
@@ -267,6 +268,7 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
         // A new connection with the same Invitation replaces the old one (reconnect, CU7).
         p.conn = Some((conn_id, tx.clone()));
         p.view.status = ParticipantStatus::Connected;
+        p.view.mic_problem = None;
         let _ = tx.send(ServerMessage::Welcome {
             name: name.clone(),
             role: p.view.role,
@@ -321,6 +323,11 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
                 let p = room.find(&name).unwrap();
                 p.view.clock_offset_ms = Some(offset_ms);
                 p.view.clock_rtt_ms = Some(rtt_ms);
+                room.broadcast_roster();
+            }
+            ClientMessage::MicStatus { problem } => {
+                let mut room = state.lock().unwrap();
+                room.find(&name).unwrap().view.mic_problem = problem;
                 room.broadcast_roster();
             }
             ClientMessage::DriftMark {

@@ -1,6 +1,7 @@
 import { t } from "./i18n.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
-import { createRecorder, type Recorder, type WorkerEvent } from "./recorder.ts";
+import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
+import type { MicProblem } from "./protocol/MicProblem.ts";
 import type { ClientMessage } from "./protocol/ClientMessage.ts";
 import type { ServerMessage } from "./protocol/ServerMessage.ts";
 import type { ParticipantView } from "./protocol/ParticipantView.ts";
@@ -32,6 +33,8 @@ status.setAttribute("role", "status");
 const micRow = app.appendChild(el("p"));
 const meterRow = app.appendChild(el("p"));
 const takeControls = app.appendChild(el("p"));
+const micWarning = app.appendChild(el("p"));
+micWarning.setAttribute("role", "alert");
 const takeStatus = app.appendChild(el("p"));
 takeStatus.setAttribute("role", "status");
 const takesList = app.appendChild(el("div"));
@@ -81,6 +84,9 @@ function connect(invite: string) {
 
   ws.onopen = () => {
     opened = true;
+    // The Coordinator forgets the microphone status on reconnect: tell it again.
+    sentMicProblem = undefined;
+    refreshMicProblem();
     syncClock();
     resync = setInterval(syncClock, CLOCK_RESYNC_MS);
   };
@@ -120,6 +126,7 @@ function connect(invite: string) {
         if (recordingTake !== msg.take) break;
         recordingTake = 0;
         recorder!.stop(msg.stopTime - clockOffsetMs!);
+        allowSleep();
         takeStatus.textContent = t("takeStopped", { take: msg.take });
         break;
       case "takeTracks":
@@ -150,7 +157,8 @@ function renderRoster(participants: ParticipantView[]) {
       const role = t(p.role === "host" ? "roleHost" : "roleGuest");
       const state =
         t(p.status === "connected" ? "statusConnected" : "statusDisconnected") +
-        (p.syncing ? ` · ${t("statusSyncing")}` : "");
+        (p.syncing ? ` · ${t("statusSyncing")}` : "") +
+        (p.micProblem ? ` · ⚠ ${t(MIC_PROBLEM_LABEL[p.micProblem])}` : "");
       return el("li", `${p.name} · ${role} · ${state}${p.status === "connected" ? ` · ${clock}` : ""}`);
     }),
   );
@@ -182,6 +190,7 @@ function startTrack() {
   const fileName = `t${String(take).padStart(2, "0")}_${myName}_${Date.now()}.ogg`;
   recorder.start(fileName, localStart, localStart + clockOffsetMs, !late, toneHz, take, invite!);
   recordingTake = take;
+  keepAwake();
   takeStatus.textContent = t(late ? "takeRejoined" : "takeStarting", { take });
   if (!late) setTimeout(() => (takeStatus.textContent = t("takeRecording", { take })), localStart - localNow());
 }
@@ -190,6 +199,64 @@ setInterval(() => {
   const mark = recordingTake && clockOffsetMs !== undefined ? recorder?.driftMark() : undefined;
   if (mark) send({ type: "driftMark", take: recordingTake, samples: mark.samples, coordinatorTime: mark.localMs + clockOffsetMs! });
 }, DRIFT_MARK_MS);
+
+// --- Keeping the microphone alive ---
+
+const MIC_PROBLEM_LABEL = {
+  ended: "micEndedLabel",
+  muted: "micMutedLabel",
+  hidden: "micHiddenLabel",
+  silent: "micSilentLabel",
+} as const;
+const MIC_PROBLEM_WARNING = {
+  ended: "micEnded",
+  muted: "micMuted",
+  hidden: "micHidden",
+  silent: "micSilent",
+} as const;
+
+let micState: MicState | undefined;
+/** Last status told to the Coordinator; `undefined` forces sending it again. */
+let sentMicProblem: MicProblem | null | undefined;
+
+/** Shows the worst current microphone problem here and tells the Coordinator, so the Host sees it too. */
+function refreshMicProblem() {
+  const problem: MicProblem | null = !micState
+    ? null
+    : micState.ended
+      ? "ended"
+      : micState.muted
+        ? "muted"
+        : document.hidden
+          ? "hidden"
+          : micState.silent
+            ? "silent"
+            : null;
+  micWarning.textContent = problem ? t(MIC_PROBLEM_WARNING[problem]) : "";
+  if (problem === sentMicProblem) return;
+  sentMicProblem = problem;
+  send({ type: "micStatus", problem });
+}
+
+// The screen turning off freezes the page on mobile, and the microphone with it.
+let wakeLock: WakeLockSentinel | undefined;
+async function keepAwake() {
+  try {
+    wakeLock = await navigator.wakeLock?.request("screen");
+  } catch {
+    // Not supported or refused: recording still works while the screen stays on.
+  }
+}
+function allowSleep() {
+  wakeLock?.release().catch(() => {});
+  wakeLock = undefined;
+}
+
+document.addEventListener("visibilitychange", () => {
+  refreshMicProblem();
+  // The system drops the wake lock when the page is hidden; take it again on return.
+  if (!document.hidden && recordingTake) keepAwake();
+});
 
 // Uploads not yet confirmed by the Coordinator, so a reloaded page can finish them (CU7).
 type PendingUploads = Record<string, { uploadUrl: string; take: number; invite: string }>;
@@ -282,7 +349,10 @@ async function setupMicrophone() {
   meterRow.append(meterLabel, el("br"), el("small", t("useHeadphones")));
 
   try {
-    const rec = await createRecorder(onRecorderEvent);
+    const rec = await createRecorder(onRecorderEvent, (state) => {
+      micState = state;
+      refreshMicProblem();
+    });
     const current = await rec.openMicrophone();
     const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
     select.replaceChildren(
