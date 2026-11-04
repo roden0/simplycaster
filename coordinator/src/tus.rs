@@ -27,6 +27,9 @@ pub struct Upload {
     pub start_time: f64,
     /// Rate of the Participant's audio clock, the unit of `drift_marks` samples.
     pub sample_rate: u32,
+    /// Latencies the browser reported and compensated when choosing the first sample (ms).
+    pub output_latency_ms: Option<f64>,
+    pub input_latency_ms: Option<f64>,
     pub offset: u64,
     /// `(samples, coordinator_time)` pairs reported while this part was recorded.
     pub drift_marks: Vec<(u64, f64)>,
@@ -65,6 +68,10 @@ fn invite(headers: &HeaderMap) -> Option<String> {
     invitation(token).map(|(name, _)| name.to_string())
 }
 
+fn header_f64(headers: &HeaderMap, name: &str) -> Option<f64> {
+    headers.get(name)?.to_str().ok()?.parse().ok()
+}
+
 fn header_u64(headers: &HeaderMap, name: &str) -> Option<u64> {
     headers.get(name)?.to_str().ok()?.parse().ok()
 }
@@ -91,6 +98,8 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
     let Some(sample_rate) = header_u64(&headers, "X-Sample-Rate").and_then(|r| u32::try_from(r).ok()) else {
         return tus(StatusCode::BAD_REQUEST);
     };
+    let latency = |name| header_f64(&headers, name).filter(|ms| (0.0..10_000.0).contains(ms));
+    let (output_latency_ms, input_latency_ms) = (latency("X-Output-Latency-Ms"), latency("X-Input-Latency-Ms"));
 
     let mut room = state.lock().unwrap();
     if take == 0 || take as usize > room.takes.len() {
@@ -114,6 +123,8 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         part,
         start_time,
         sample_rate,
+        output_latency_ms,
+        input_latency_ms,
         offset: 0,
         length,
         drift_marks: Vec::new(),

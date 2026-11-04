@@ -10,6 +10,7 @@ const en = {
   enableMicrophone: "Enable microphone",
   microphone: "Microphone",
   inputLevel: "Input level",
+  useHeadphones: "Use headphones, so the other Participants' voices do not leak into your Track.",
   participants: "Participants",
   roleHost: "Host",
   roleGuest: "Guest",

@@ -43,6 +43,8 @@ let clockOffsetMs: number | undefined;
 let recorder: Recorder | undefined;
 let myName = "";
 let isHost = false;
+/** Frequency of this Participant's audible Sync tone, from the Coordinator. */
+let toneHz = 1000;
 /** The Take being recorded in the Room, from takeStarted until takeStopped. */
 let activeTake: { take: number; startTime: number } | undefined;
 /** Take this browser is recording a part of (0 = none). */
@@ -93,6 +95,7 @@ function connect(invite: string) {
           role: t(msg.role === "host" ? "roleHost" : "roleGuest"),
         });
         isHost = msg.role === "host";
+        toneHz = msg.toneHz;
         if (isHost) renderHostControls();
         break;
       case "pong":
@@ -177,7 +180,7 @@ function startTrack() {
   if (late) localStart = localNow() + LATE_START_LEAD_MS;
   // Unique local name per part; the Coordinator names the files it stores.
   const fileName = `t${String(take).padStart(2, "0")}_${myName}_${Date.now()}.ogg`;
-  recorder.start(fileName, localStart, localStart + clockOffsetMs, !late, take, invite!);
+  recorder.start(fileName, localStart, localStart + clockOffsetMs, !late, toneHz, take, invite!);
   recordingTake = take;
   takeStatus.textContent = t(late ? "takeRejoined" : "takeStarting", { take });
   if (!late) setTimeout(() => (takeStatus.textContent = t("takeRecording", { take })), localStart - localNow());
@@ -276,7 +279,7 @@ async function setupMicrophone() {
   meter.high = 0.8;
   meterLabel.append(" ", meter);
   micRow.append(label);
-  meterRow.append(meterLabel);
+  meterRow.append(meterLabel, el("br"), el("small", t("useHeadphones")));
 
   try {
     const rec = await createRecorder(onRecorderEvent);

@@ -2,7 +2,7 @@
 // Pipeline: mic → AudioWorklet (capture + Sync tone) → Worker (Opus/Ogg) → OPFS.
 
 import workletUrl from "./capture-worklet.ts?worker&url";
-import { TONE_HZ, TONE_SECONDS } from "./sync-tone.ts";
+import { AUDIBLE_TONE_DELAY_SECONDS, TONE_SECONDS } from "./sync-tone.ts";
 
 export type Recorder = Awaited<ReturnType<typeof createRecorder>>;
 
@@ -28,6 +28,8 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
   worker.onmessage = ({ data }) => onEvent(data);
 
   let source: MediaStreamAudioSourceNode | undefined;
+  /** From sound reaching the microphone to the browser handing it over (ms), when the browser reports it. */
+  let inputLatencyMs = 0;
   /** First frame of the part being recorded, for drift marks. */
   let partStartFrame: number | undefined;
 
@@ -43,42 +45,61 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
         autoGainControl: false,
       },
     });
+    const settings = stream.getAudioTracks()[0].getSettings() as MediaTrackSettings & { latency?: number };
+    inputLatencyMs = (settings.latency ?? 0) * 1000;
     source = ctx.createMediaStreamSource(stream);
     source.connect(analyser);
     source.connect(capture);
     await ctx.resume();
-    return stream.getAudioTracks()[0].getSettings().deviceId;
+    return settings.deviceId;
   }
 
-  /** AudioContext frame at a given local wall-clock time (ms since the Unix epoch). */
-  function frameAt(localMs: number) {
-    let { contextTime, performanceTime } = ctx.getOutputTimestamp();
-    if (!performanceTime) [contextTime, performanceTime] = [ctx.currentTime, performance.now()];
+  /** From rendering a sample to hearing it (s), as the browser reports it. */
+  const outputLatency = () => (ctx.baseLatency || 0) + (ctx.outputLatency || 0);
+
+  /** Position on the context's render timeline (s) at a local wall-clock time (ms since the Unix epoch). */
+  function renderTimeAt(localMs: number) {
     const perfMs = localMs - performance.timeOrigin;
-    return Math.round((contextTime! + (perfMs - performanceTime) / 1000) * ctx.sampleRate);
+    const { contextTime, performanceTime } = ctx.getOutputTimestamp();
+    // contextTime is the sample being heard now; rendering runs ahead of it by the output latency.
+    if (performanceTime) return contextTime! + outputLatency() + (perfMs - performanceTime) / 1000;
+    return ctx.currentTime + (perfMs - performance.now()) / 1000;
   }
+
+  /** Frame holding the sound that reached the microphone at a local wall-clock time. */
+  const captureFrameAt = (localMs: number) => Math.round(renderTimeAt(localMs + inputLatencyMs) * ctx.sampleRate);
 
   /**
    * Records a Track part from `localStartMs`. `startTime` is the same instant on the
    * Coordinator clock; `tone` is true only for the part that starts at T.
    */
-  function start(fileName: string, localStartMs: number, startTime: number, tone: boolean, take: number, invite: string) {
-    const startFrame = frameAt(localStartMs);
+  function start(
+    fileName: string,
+    localStartMs: number,
+    startTime: number,
+    tone: boolean,
+    toneHz: number,
+    take: number,
+    invite: string,
+  ) {
+    const startFrame = captureFrameAt(localStartMs);
     partStartFrame = startFrame;
-    worker.postMessage({ fileName, sampleRate: ctx.sampleRate, take, invite, startTime });
+    const outputLatencyMs = outputLatency() * 1000;
+    worker.postMessage({ fileName, sampleRate: ctx.sampleRate, take, invite, startTime, outputLatencyMs, inputLatencyMs });
     capture.port.postMessage({ start: startFrame, tone });
     if (!tone) return;
-    // Let everyone hear the Sync tone too.
-    const osc = new OscillatorNode(ctx, { frequency: TONE_HZ });
+    // Play this Participant's own tone, heard at T + delay: rendered one output latency earlier.
+    const at = renderTimeAt(localStartMs) - outputLatency() + AUDIBLE_TONE_DELAY_SECONDS;
+    const osc = new OscillatorNode(ctx, { frequency: toneHz });
     const gain = new GainNode(ctx, { gain: 0.3 });
     osc.connect(gain).connect(ctx.destination);
-    osc.start(startFrame / ctx.sampleRate);
-    osc.stop(startFrame / ctx.sampleRate + TONE_SECONDS);
+    osc.start(at);
+    osc.stop(at + TONE_SECONDS);
   }
 
   function stop(localStopMs: number) {
     partStartFrame = undefined;
-    capture.port.postMessage({ stop: frameAt(localStopMs) });
+    capture.port.postMessage({ stop: captureFrameAt(localStopMs) });
   }
 
   function level() {
@@ -87,12 +108,12 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void) {
     return buf.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
   }
 
-  /** Samples recorded in the current part so far, and the local wall-clock time of that sample. */
+  /** Samples recorded in the current part up to now, and the local wall-clock time of now. */
   function driftMark() {
-    const { contextTime, performanceTime } = ctx.getOutputTimestamp();
-    if (partStartFrame === undefined || !performanceTime) return;
-    const samples = Math.round(contextTime! * ctx.sampleRate) - partStartFrame;
-    if (samples > 0) return { samples, localMs: performance.timeOrigin + performanceTime };
+    if (partStartFrame === undefined) return;
+    const localMs = performance.timeOrigin + performance.now();
+    const samples = captureFrameAt(localMs) - partStartFrame;
+    if (samples > 0) return { samples, localMs };
   }
 
   /** Finishes uploads left pending by an earlier page (CU7). */

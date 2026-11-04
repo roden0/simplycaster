@@ -79,6 +79,9 @@ pub enum ServerMessage {
     Welcome {
         name: String,
         role: Role,
+        /// Frequency of this Participant's audible Sync tone: distinct per Participant, so each
+        /// Track shows whose speakers it picked up (calibration tests in one room).
+        tone_hz: f64,
     },
     /// `coordinator_time` is milliseconds since the Unix epoch.
     Pong {

@@ -61,9 +61,17 @@ function grew(file: TrackFile) {
   file.waiters.splice(0).forEach((wake) => wake());
 }
 
-type Begin = { fileName: string; sampleRate: number; take: number; invite: string; startTime: number };
+type Begin = {
+  fileName: string;
+  sampleRate: number;
+  take: number;
+  invite: string;
+  startTime: number;
+  outputLatencyMs: number;
+  inputLatencyMs: number;
+};
 
-async function begin({ fileName, sampleRate, take, invite, startTime }: Begin) {
+async function begin({ fileName, sampleRate, take, invite, startTime, outputLatencyMs, inputLatencyMs }: Begin) {
   const handle = await openTrack(fileName, true);
   handle.truncate(0);
   const file: TrackFile = { handle, size: 0, finished: false, waiters: [] };
@@ -90,7 +98,12 @@ async function begin({ fileName, sampleRate, take, invite, startTime }: Begin) {
   rec = { output, take, sampleRate, frames: 0 };
   startUpload(file, fileName, take, invite, {
     endpoint: `${self.location.origin}/takes/${take}/uploads`,
-    creationHeaders: { "X-Track-Start": String(startTime), "X-Sample-Rate": String(sampleRate) },
+    creationHeaders: {
+      "X-Track-Start": String(startTime),
+      "X-Sample-Rate": String(sampleRate),
+      "X-Output-Latency-Ms": String(outputLatencyMs),
+      "X-Input-Latency-Ms": String(inputLatencyMs),
+    },
   });
 }
 

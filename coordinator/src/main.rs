@@ -181,6 +181,9 @@ impl Room {
                             "startTime": u.start_time,
                             "startOffsetMs": u.start_time - t.start_time,
                             "sampleRate": u.sample_rate,
+                            "toneHz": tone_hz(&u.participant),
+                            "outputLatencyMs": u.output_latency_ms,
+                            "inputLatencyMs": u.input_latency_ms,
                             "driftMarks": u.drift_marks.iter()
                                 .map(|(samples, time)| serde_json::json!({ "samples": samples, "coordinatorTime": time }))
                                 .collect::<Vec<_>>(),
@@ -228,6 +231,12 @@ fn invitation(token: &str) -> Option<(&'static str, Role)> {
     Some((INVITATIONS[i].0, INVITATIONS[i].1))
 }
 
+/// Audible Sync tone frequency of a Participant: 1000 Hz, 1500 Hz… in Invitation order.
+fn tone_hz(name: &str) -> f64 {
+    let i = INVITATIONS.iter().position(|(n, _, _)| *n == name).unwrap_or(0);
+    1000.0 + 500.0 * i as f64
+}
+
 fn is_host(token: &str) -> bool {
     invitation(token).is_some_and(|(_, role)| role == Role::Host)
 }
@@ -261,6 +270,7 @@ async fn handle_socket(socket: WebSocket, name: String, state: AppState) {
         let _ = tx.send(ServerMessage::Welcome {
             name: name.clone(),
             role: p.view.role,
+            tone_hz: tone_hz(&name),
         });
         let role = p.view.role;
         // Catch up with the current Take (CU7): keep recording in a new part, or stop.
