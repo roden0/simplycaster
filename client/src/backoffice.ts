@@ -67,6 +67,12 @@ async function refresh() {
   const rooms = (await call("")) as RoomView[] | undefined;
   if (!rooms) return;
   roomsList.replaceChildren(...(rooms.length ? rooms.map(renderRoom) : [el("p", t("noRooms"))]));
+  // Once for the whole list: it explains the FLAC button of every closed Room.
+  if (rooms.some((r) => r.closed)) {
+    const hint = el("p");
+    hint.append(el("small", t("flacHint")));
+    roomsList.append(hint);
+  }
 }
 
 /** Creation date and time in the viewer's locale and time zone, or just the date for old Rooms. */
@@ -136,7 +142,6 @@ function renderRoom(room: RoomView): HTMLElement {
       if (room.flac === "failed") flacRow.append(el("span", t("flacFailed")), " ");
       flacRow.append(convert);
     }
-    flacRow.append(el("br"), el("small", t("flacHint")));
     section.append(download, flacRow);
     return section;
   }
