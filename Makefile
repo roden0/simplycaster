@@ -26,6 +26,6 @@ clean:
 	cd coordinator && cargo clean
 	rm -rf client/dist client/node_modules
 
-# UP2: clap alignment error and clock drift of a Take, e.g. make measure ROOM=coordinator/data/room-1793805495 TAKE=1
+# UP2: sync error and clock drift of a Take, e.g. make measure ROOM=coordinator/data/prueba-sync_2026-11-05 TAKE=1
 measure:
 	node tools/measure-sync.ts $(ROOM) $(TAKE)

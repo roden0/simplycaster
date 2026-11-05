@@ -4,7 +4,7 @@
 //! A Participant creates one upload per Track when it starts recording and appends
 //! to it with PATCH while the Track grows; the final PATCH carries `Upload-Length`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use axum::{
     body::Body,
@@ -15,11 +15,11 @@ use axum::{
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::{AppState, MAX_TRACK_BYTES, invitation, track_stem};
+use crate::{AppState, MAX_TRACK_BYTES, SharedRoom, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriftMark {
     pub samples: u64,
@@ -56,7 +56,47 @@ pub struct Upload {
     busy: bool,
 }
 
+/// A Track part as `room.json` records it, to list past Rooms after a restart.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedPart {
+    participant: String,
+    part: u32,
+    file: String,
+    complete: bool,
+    bytes: u64,
+    start_time: f64,
+    sample_rate: u32,
+    output_latency_ms: Option<f64>,
+    input_latency_ms: Option<f64>,
+    calibrated_round_trip_ms: Option<f64>,
+    clock_offset_ms: Option<f64>,
+    clock_rtt_ms: Option<f64>,
+    #[serde(default)]
+    drift_marks: Vec<DriftMark>,
+}
+
 impl Upload {
+    pub fn from_saved(take: u32, p: SavedPart) -> Upload {
+        Upload {
+            id: p.file.trim_end_matches(".ogg").to_string(),
+            take,
+            participant: p.participant,
+            part: p.part,
+            start_time: p.start_time,
+            sample_rate: p.sample_rate,
+            output_latency_ms: p.output_latency_ms,
+            input_latency_ms: p.input_latency_ms,
+            calibrated_round_trip_ms: p.calibrated_round_trip_ms,
+            offset: p.bytes,
+            drift_marks: p.drift_marks,
+            clock_offset_ms: p.clock_offset_ms,
+            clock_rtt_ms: p.clock_rtt_ms,
+            length: p.complete.then_some(p.bytes),
+            busy: false,
+        }
+    }
+
     pub fn is_complete(&self) -> bool {
         self.length == Some(self.offset)
     }
@@ -80,10 +120,11 @@ fn tus_with<const N: usize>(status: StatusCode, headers: [(&'static str, String)
     res
 }
 
-/// The Participant's Invitation, sent as a header on every tus request.
-fn invite(headers: &HeaderMap) -> Option<String> {
+/// The Room and fixed name behind the Invitation sent as a header on every tus request.
+/// Closed Rooms match nothing, so nothing more reaches them (CU8).
+fn invite(state: &AppState, headers: &HeaderMap) -> Option<(SharedRoom, String)> {
     let token = headers.get("X-Invite")?.to_str().ok()?;
-    invitation(token).map(|(name, _)| name.to_string())
+    state.by_invite(token).map(|(room, name, _)| (room, name))
 }
 
 fn header_f64(headers: &HeaderMap, name: &str) -> Option<f64> {
@@ -96,7 +137,7 @@ fn header_u64(headers: &HeaderMap, name: &str) -> Option<u64> {
 
 /// POST /takes/{take}/uploads — creates the upload for the next part of this Participant's Track.
 pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let Some(name) = invite(&headers) else {
+    let Some((shared, name)) = invite(&state, &headers) else {
         return tus(StatusCode::FORBIDDEN);
     };
     let length = header_u64(&headers, "Upload-Length");
@@ -122,7 +163,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
     let clock_offset_ms = header_f64(&headers, "X-Clock-Offset-Ms").filter(|ms| ms.is_finite());
     let clock_rtt_ms = latency("X-Clock-Rtt-Ms");
 
-    let mut room = state.lock().unwrap();
+    let mut room = shared.lock().unwrap();
     if take == 0 || take as usize > room.takes.len() {
         return tus(StatusCode::NOT_FOUND);
     }
@@ -132,7 +173,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         .iter()
         .filter(|u| u.take == take && u.participant == name)
         .count() as u32;
-    let id = track_stem(take, &name, part);
+    let id = track_stem(&room.id, take, &name, part);
     if let Err(e) = std::fs::File::create(room.dir.join(format!("{id}.ogg"))) {
         eprintln!("cannot create {id}.ogg: {e}");
         return tus(StatusCode::INTERNAL_SERVER_ERROR);
@@ -154,15 +195,17 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         clock_rtt_ms,
         busy: false,
     });
+    // Listed in room.json from the start, so a restart mid-Take still finds this file.
+    room.save_metadata();
     tus_with(StatusCode::CREATED, [("Location", format!("/uploads/{id}"))])
 }
 
 /// HEAD /uploads/{id} — how much the Coordinator already has, to resume from there.
 pub async fn head(Path(id): Path<String>, State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let Some(name) = invite(&headers) else {
+    let Some((shared, name)) = invite(&state, &headers) else {
         return tus(StatusCode::FORBIDDEN);
     };
-    let room = state.lock().unwrap();
+    let room = shared.lock().unwrap();
     let Some(u) = room.uploads.iter().find(|u| u.id == id && u.participant == name) else {
         return tus(StatusCode::NOT_FOUND);
     };
@@ -182,7 +225,7 @@ pub async fn head(Path(id): Path<String>, State(state): State<AppState>, headers
 
 /// PATCH /uploads/{id} — appends bytes at `Upload-Offset`.
 pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, headers: HeaderMap, body: Body) -> Response {
-    let Some(name) = invite(&headers) else {
+    let Some((shared, name)) = invite(&state, &headers) else {
         return tus(StatusCode::FORBIDDEN);
     };
     if headers
@@ -197,7 +240,7 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
     let new_length = header_u64(&headers, "Upload-Length");
 
     let (path, offset, length) = {
-        let mut room = state.lock().unwrap();
+        let mut room = shared.lock().unwrap();
         let dir = room.dir.clone();
         let Some(u) = room.uploads.iter_mut().find(|u| u.id == id && u.participant == name) else {
             return tus(StatusCode::NOT_FOUND);
@@ -220,7 +263,7 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
     // Whatever reached the disk counts, even on error: the client resumes from there.
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(offset);
 
-    let mut room = state.lock().unwrap();
+    let mut room = shared.lock().unwrap();
     let Some(u) = room.uploads.iter_mut().find(|u| u.id == id) else {
         return tus(StatusCode::NOT_FOUND); // uploads are never removed; kept for safety
     };

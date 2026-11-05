@@ -126,6 +126,8 @@ pub enum ServerMessage {
     },
     /// The same Invitation connected from somewhere else; this connection is closed and must not reconnect.
     Replaced,
+    /// The Host closed the Room (CU8): Invitations have expired, so this connection is closed for good.
+    RoomClosed,
     /// Complete Track parts of a Take; `pending` are the Participants who recorded it and still have audio to upload.
     TakeTracks {
         take: u32,
@@ -133,4 +135,66 @@ pub enum ServerMessage {
         pending: Vec<String>,
         tracks: Vec<TrackView>,
     },
+}
+
+// --- Backoffice (CU1, CU2, CU8, CU9): JSON over HTTP, behind the backoffice link ---
+
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct InvitationView {
+    /// Fixed name, unique in the Room and part of the Track file names.
+    pub name: String,
+    pub role: Role,
+    /// Secret of the personal link `/i/{token}`.
+    pub token: String,
+    pub status: ParticipantStatus,
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RoomView {
+    /// `<name>_<date>`: the Room folder and the prefix of every file in it.
+    pub id: String,
+    pub name: String,
+    /// Creation date, `YYYY-MM-DD` (UTC).
+    pub created: String,
+    pub closed: bool,
+    pub recording: bool,
+    /// Takes started so far.
+    pub takes: u32,
+    /// Participants with audio not yet uploaded: closing now leaves their Tracks incomplete.
+    pub pending: Vec<String>,
+    pub invitations: Vec<InvitationView>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CreateRoom {
+    pub name: String,
+    /// Fixed name of the Host, who gets the first Invitation.
+    pub host: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CreateInvitation {
+    pub name: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum BackofficeError {
+    /// Names may only use letters, digits and `-`; they end up in file names.
+    InvalidName,
+    NameTaken,
+    /// A Room holds at most `MAX_PARTICIPANTS`.
+    RoomFull,
+    /// Stop the Take before closing the Room.
+    Recording,
+    Closed,
 }

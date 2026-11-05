@@ -20,9 +20,9 @@ Pragmatism first: the simplest solution that works ("the Russian pencil, not the
 
 The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + Vite), driven by a root `Makefile`. You need Rust (stable) and Node.js 24+.
 
-- `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. In iteration 0a the Room and its two links are hard-coded: `/i/host` (Host) and `/i/ana` (Guest).
+- `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. Create Rooms and Invitations in the backoffice, http://127.0.0.1:3000/backoffice/admin; it shows each Participant's link. On restart the Coordinator lists past Rooms again from each `room.json` in `coordinator/data/`, closed: they can be downloaded, not reopened.
 - `make test` runs the Rust tests and the client tests (`node --test`).
-- `make measure ROOM=coordinator/data/room-<id> TAKE=1` reports the sync error between the Tracks of a Take, from the Sync tone each Participant plays aloud and from cross-correlation of the audio, and the audio clock drift from the drift marks (needs `ffmpeg`).
+- `make measure ROOM=coordinator/data/<room>_<date> TAKE=1` reports the sync error between the Tracks of a Take, from the Sync tone each Participant plays aloud and from cross-correlation of the audio, and the audio clock drift from the drift marks (needs `ffmpeg`).
 - `make types` regenerates `client/src/protocol/` from the Rust message types with `ts-rs`. Never edit those files by hand; commit them with the Rust change.
 
 Recording APIs (microphone, WebCodecs, OPFS) only work in a secure context: use `localhost` or HTTPS when testing from other devices.
@@ -34,7 +34,5 @@ The root `Dockerfile` builds one image with the Coordinator and the client. On C
 - **Build pack**: Dockerfile; base directory `/`, Dockerfile location `/Dockerfile`.
 - **Ports exposes**: `3000`. The platform proxy terminates HTTPS, which browsers require for recording; WebSockets pass through it.
 - **Persistent storage**: mount a volume at `/data`, or Tracks are lost on every redeploy.
-- **Environment**: `HOST_INVITE` and `GUEST_INVITE` with long random tokens (e.g. `openssl rand -hex 16`). The links are then `https://<domain>/i/<token>`. Without them the links are the guessable `/i/host` and `/i/ana`, so never deploy publicly without them.
-
-The startup log lists both links.
+- **Environment**: `BACKOFFICE_TOKEN` with a long random token (e.g. `openssl rand -hex 16`). The backoffice is then `https://<domain>/backoffice/<token>`. Without it the backoffice is the guessable `/backoffice/admin`, so never deploy publicly without it. Invitation links get random tokens of their own.
 

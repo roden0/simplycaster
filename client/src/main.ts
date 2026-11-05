@@ -1,4 +1,5 @@
 import { t } from "./i18n.ts";
+import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
 import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
 import type { MicProblem } from "./protocol/MicProblem.ts";
@@ -25,12 +26,6 @@ const PENDING_UPLOADS_KEY = "simplycaster.pendingUploads";
 const app = document.querySelector<HTMLElement>("#app")!;
 const invite = location.pathname.match(/^\/i\/([^/]+)$/)?.[1];
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, text = ""): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.textContent = text;
-  return e;
-}
-
 document.title = t("appTitle");
 app.append(el("h1", t("appTitle")));
 app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
@@ -56,8 +51,8 @@ let clockSamples: ClockSample[] = [];
 let recorder: Recorder | undefined;
 let myName = "";
 let isHost = false;
-/** This Invitation was opened somewhere else, which took over the connection. */
-let replaced = false;
+/** This Invitation was opened somewhere else, or its Room was closed: never reconnect. */
+let ended = false;
 /** Frequency of this Participant's audible Sync tone, from the Coordinator. */
 let toneHz = 1000;
 /** The Take being recorded in the Room, from takeStarted until takeStopped. */
@@ -144,8 +139,12 @@ function connect(invite: string) {
         takeStatus.textContent = t("takeStopped", { take: msg.take });
         break;
       case "replaced":
-        replaced = true;
+        ended = true;
         status.textContent = t("openedElsewhere");
+        break;
+      case "roomClosed":
+        ended = true;
+        status.textContent = t("roomClosed");
         break;
       case "takeTracks":
         if (isHost) renderTakeTracks(msg.take, msg.expected, msg.pending, msg.tracks);
@@ -160,8 +159,8 @@ function connect(invite: string) {
       status.textContent = t("invalidInvitation");
       return;
     }
-    // Reconnecting would only take the Invitation back from the other window.
-    if (replaced) return;
+    // Reconnecting would only take the Invitation back from the other window, or find it expired.
+    if (ended) return;
     status.textContent = t("reconnecting");
     setTimeout(() => connect(invite), RECONNECT_MS);
   };
