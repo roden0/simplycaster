@@ -10,7 +10,12 @@ id: string, name: string,
 /**
  * Creation date, `YYYY-MM-DD` (UTC).
  */
-created: string, closed: boolean, recording: boolean, 
+created: string, 
+/**
+ * Exact creation instant, ms since the Unix epoch, shown in the viewer's local time.
+ * Unknown for Rooms of iteration 0a without Takes.
+ */
+createdAt: number | null, closed: boolean, recording: boolean, 
 /**
  * Takes started so far.
  */

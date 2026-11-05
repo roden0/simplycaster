@@ -61,6 +61,7 @@ pub struct Room {
     id: String,
     name: String,
     created: String,
+    created_at: Option<f64>,
     /// Closed Rooms are immutable and their Invitations have expired (CU8, ADR-0002).
     closed: bool,
     flac: FlacState,
@@ -88,6 +89,7 @@ impl Room {
             id,
             name,
             created: utc_date(now_ms()),
+            created_at: Some(now_ms()),
             closed: false,
             flac: FlacState::None,
             participants: Vec::new(),
@@ -143,6 +145,8 @@ impl Room {
             .created
             .or_else(|| saved.takes.first().map(|t| utc_date(t.start_time)))
             .unwrap_or_default();
+        // Saved since the time was shown; older Rooms only know their date.
+        room.created_at = saved.created_at;
         let mut takes = saved.takes;
         takes.sort_by_key(|t| t.take);
         for (i, t) in takes.into_iter().enumerate() {
@@ -324,6 +328,7 @@ impl Room {
             id: self.id.clone(),
             name: self.name.clone(),
             created: self.created.clone(),
+            created_at: self.created_at,
             closed: self.closed,
             recording: self.recording,
             takes: self.take,
@@ -381,6 +386,7 @@ impl Room {
             "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
             "room": self.name,
             "created": self.created,
+            "createdAt": self.created_at,
             "closed": self.closed,
             "participants": self.participants.iter().map(|p| serde_json::json!({ "name": p.view.name, "role": p.view.role })).collect::<Vec<_>>(),
             "takes": takes,
@@ -406,6 +412,7 @@ impl Room {
 struct SavedRoom {
     room: Option<String>,
     created: Option<String>,
+    created_at: Option<f64>,
     participants: Option<Vec<SavedParticipant>>,
     takes: Vec<SavedTake>,
 }

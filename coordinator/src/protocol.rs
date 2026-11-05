@@ -172,6 +172,9 @@ pub struct RoomView {
     pub name: String,
     /// Creation date, `YYYY-MM-DD` (UTC).
     pub created: String,
+    /// Exact creation instant, ms since the Unix epoch, shown in the viewer's local time.
+    /// Unknown for Rooms of iteration 0a without Takes.
+    pub created_at: Option<f64>,
     pub closed: bool,
     pub recording: bool,
     /// Takes started so far.

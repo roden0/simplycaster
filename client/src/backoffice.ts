@@ -69,6 +69,12 @@ async function refresh() {
   roomsList.replaceChildren(...(rooms.length ? rooms.map(renderRoom) : [el("p", t("noRooms"))]));
 }
 
+/** Creation date and time in the viewer's locale and time zone, or just the date for old Rooms. */
+function createdText(room: RoomView): string {
+  if (room.createdAt === null) return room.created;
+  return new Date(room.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+}
+
 function renderRoom(room: RoomView): HTMLElement {
   const section = el("section");
   const state = room.closed
@@ -77,7 +83,7 @@ function renderRoom(room: RoomView): HTMLElement {
       ? t("roomRecording", { take: room.takes })
       : t("roomOpen");
   section.append(
-    el("h3", t("roomHeading", { name: room.name, created: room.created })),
+    el("h3", t("roomHeading", { name: room.name, created: createdText(room) })),
     el("p", `${state} · ${t("roomTakes", { takes: room.takes })}`),
   );
 
