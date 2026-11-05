@@ -14,6 +14,7 @@ const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   roomFull: "errorRoomFull",
   recording: "errorRecording",
   closed: "errorClosed",
+  open: "errorOpen",
 };
 
 document.title = t("backofficeTitle");
@@ -44,6 +45,22 @@ function field(label: string, value = "") {
   const wrap = el("label", label);
   wrap.append(" ", input);
   return { wrap, input };
+}
+
+/** Rooms being converted, polled until done; then the list is redrawn once. */
+const converting = new Set<string>();
+
+function waitForFlac(id: string) {
+  if (converting.has(id)) return;
+  converting.add(id);
+  const timer = setInterval(async () => {
+    const res = await fetch(api).catch(() => undefined);
+    const rooms: RoomView[] | undefined = res?.ok ? await res.json() : undefined;
+    if (rooms?.find((r) => r.id === id)?.flac === "converting") return;
+    clearInterval(timer);
+    converting.delete(id);
+    refresh();
+  }, 2000);
 }
 
 async function refresh() {
@@ -93,9 +110,28 @@ function renderRoom(room: RoomView): HTMLElement {
   section.append(el("h4", t("invitations")), list);
 
   if (room.closed) {
+    const roomUrl = `${api}/${encodeURIComponent(room.id)}`;
     const download = el("a", t("downloadRoom"));
-    download.href = `${api}/${encodeURIComponent(room.id)}/zip`;
-    section.append(download);
+    download.href = `${roomUrl}/zip`;
+    const flacRow = el("p");
+    if (room.flac === "ready") {
+      const flac = el("a", t("downloadFlac"));
+      flac.href = `${roomUrl}/flac/zip`;
+      flacRow.append(flac);
+    } else if (room.flac === "converting") {
+      flacRow.append(el("span", t("convertingFlac")));
+      flacRow.setAttribute("role", "status");
+      waitForFlac(room.id);
+    } else {
+      const convert = el("button", t("convertFlac"));
+      convert.onclick = async () => {
+        if (await call(`/${encodeURIComponent(room.id)}/flac`, {})) refresh();
+      };
+      if (room.flac === "failed") flacRow.append(el("span", t("flacFailed")), " ");
+      flacRow.append(convert);
+    }
+    flacRow.append(el("br"), el("small", t("flacHint")));
+    section.append(download, flacRow);
     return section;
   }
 

@@ -1,5 +1,6 @@
 mod backoffice;
 mod download;
+mod flac;
 mod protocol;
 mod tus;
 
@@ -31,7 +32,7 @@ use tower_http::{
 };
 
 use protocol::{
-    BackofficeError, ClientMessage, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
+    BackofficeError, ClientMessage, FlacState, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
     TrackView,
 };
 
@@ -59,6 +60,7 @@ pub struct Room {
     created: String,
     /// Closed Rooms are immutable and their Invitations have expired (CU8, ADR-0002).
     closed: bool,
+    flac: FlacState,
     participants: Vec<Participant>,
     next_conn_id: u64,
     /// Number of the last Take started (0 = none yet).
@@ -84,6 +86,7 @@ impl Room {
             name,
             created: utc_date(now_ms()),
             closed: false,
+            flac: FlacState::None,
             participants: Vec::new(),
             next_conn_id: 0,
             take: 0,
@@ -148,6 +151,10 @@ impl Room {
             room.uploads.extend(t.tracks.into_iter().map(|p| tus::Upload::from_saved(take, p)));
         }
         room.take = room.takes.len() as u32;
+        // FLACs are renamed into place only when complete, so all present means converted.
+        if !room.uploads.is_empty() && room.uploads.iter().all(|u| room.flac_path(u).is_file()) {
+            room.flac = FlacState::Ready;
+        }
         let mut people = saved.participants.unwrap_or_default();
         for u in &room.uploads {
             if !people.iter().any(|p| p.name == u.participant) {
@@ -175,6 +182,10 @@ impl Room {
             });
         }
         Ok(room)
+    }
+
+    fn flac_path(&self, u: &tus::Upload) -> PathBuf {
+        flac::path(&self.dir, &u.id)
     }
 
     fn find(&mut self, name: &str) -> Option<&mut Participant> {
@@ -314,6 +325,7 @@ impl Room {
             recording: self.recording,
             takes: self.take,
             pending: self.pending(),
+            flac: self.flac,
             invitations: self
                 .participants
                 .iter()
@@ -354,6 +366,8 @@ impl Room {
                             "clockOffsetMs": u.clock_offset_ms,
                             "clockRttMs": u.clock_rtt_ms,
                             "driftMarks": u.drift_marks,
+                            // What the FLAC delivery corrects (ADR-0004); null when the marks are too few.
+                            "driftPpm": u.drift_ppm(),
                         })
                     })
                     .collect();
@@ -674,6 +688,8 @@ async fn main() {
         .route(&format!("{api}/{{id}}/invitations"), post(backoffice::create_invitation))
         .route(&format!("{api}/{{id}}/close"), post(backoffice::close))
         .route(&format!("{api}/{{id}}/zip"), get(backoffice::zip))
+        .route(&format!("{api}/{{id}}/flac"), post(backoffice::convert_flac))
+        .route(&format!("{api}/{{id}}/flac/zip"), get(backoffice::flac_zip))
         .fallback_service(static_files)
         // Revalidate on every load so a new build is never hidden behind a cached index.html.
         .layer(SetResponseHeaderLayer::overriding(

@@ -167,6 +167,18 @@ pub struct RoomView {
     /// Participants with audio not yet uploaded: closing now leaves their Tracks incomplete.
     pub pending: Vec<String>,
     pub invitations: Vec<InvitationView>,
+    pub flac: FlacState,
+}
+
+/// Delivery conversion of a closed Room to FLAC (CU10), with drift corrected (ADR-0004).
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FlacState {
+    None,
+    Converting,
+    Ready,
+    Failed,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -197,4 +209,6 @@ pub enum BackofficeError {
     /// Stop the Take before closing the Room.
     Recording,
     Closed,
+    /// Downloads and FLAC need a closed Room.
+    Open,
 }

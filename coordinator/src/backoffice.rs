@@ -1,5 +1,5 @@
 //! Backoffice API behind the secret link `/backoffice/{token}`: create Rooms and Invitations
-//! (CU1, CU2), close a Room (CU8) and download it (CU9).
+//! (CU1, CU2), close a Room (CU8), download it (CU9) and convert it to FLAC (CU10).
 // shortcut: one shared secret instead of accounts; replace with real authentication (JWT planned).
 // Handlers fail with a ready Response, axum's usual style; its size does not matter here.
 #![allow(clippy::result_large_err)]
@@ -14,8 +14,8 @@ use axum::{
 };
 
 use crate::{
-    AppState, Room, SharedRoom, download,
-    protocol::{BackofficeError, CreateInvitation, CreateRoom, Role, RoomView},
+    AppState, Room, SharedRoom, download, flac,
+    protocol::{BackofficeError, CreateInvitation, CreateRoom, FlacState, Role, RoomView},
 };
 
 fn check(state: &AppState, token: &str) -> Result<(), Response> {
@@ -117,7 +117,7 @@ pub async fn zip(Path((token, id)): Path<(String, String)>, State(state): State<
     let shared = room(&state, &id)?;
     let room = shared.lock().unwrap();
     if !room.closed {
-        return Err(StatusCode::CONFLICT.into_response());
+        return Err(error(BackofficeError::Open));
     }
     // Incomplete parts are kept: what reached the Coordinator is still usable audio.
     let entries = room
@@ -128,4 +128,62 @@ pub async fn zip(Path((token, id)): Path<(String, String)>, State(state): State<
         .map(|f| (format!("{}/{f}", room.id), room.dir.join(f)))
         .collect();
     Ok(download::zip_response(entries, format!("{}.zip", room.id)))
+}
+
+/// CU10: starts converting every Track part of a closed Room to FLAC, in the background.
+pub async fn convert_flac(
+    Path((token, id)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<Json<RoomView>, Response> {
+    check(&state, &token)?;
+    let shared = room(&state, &id)?;
+    let mut room = shared.lock().unwrap();
+    if !room.closed {
+        return Err(error(BackofficeError::Open));
+    }
+    if matches!(room.flac, FlacState::None | FlacState::Failed) {
+        room.flac = FlacState::Converting;
+        let jobs = room
+            .uploads
+            .iter()
+            .map(|u| flac::Job {
+                ogg: room.dir.join(u.file()),
+                flac: room.flac_path(u),
+                drift_ppm: u.drift_ppm(),
+            })
+            .collect();
+        let shared = shared.clone();
+        tokio::spawn(async move {
+            let result = flac::convert_all(jobs).await;
+            let mut room = shared.lock().unwrap();
+            room.flac = match result {
+                Ok(()) => FlacState::Ready,
+                Err(e) => {
+                    eprintln!("{}: FLAC conversion failed: {e}", room.id);
+                    FlacState::Failed
+                }
+            };
+        });
+    }
+    Ok(Json(room.view()))
+}
+
+/// CU10: the converted Room, like the Ogg download but with FLAC files.
+pub async fn flac_zip(
+    Path((token, id)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<Response, Response> {
+    check(&state, &token)?;
+    let shared = room(&state, &id)?;
+    let room = shared.lock().unwrap();
+    if room.flac != FlacState::Ready {
+        return Err(StatusCode::CONFLICT.into_response());
+    }
+    let entries = room
+        .uploads
+        .iter()
+        .map(|u| (format!("{}/{}.flac", room.id, u.id), room.flac_path(u)))
+        .chain([(format!("{}/room.json", room.id), room.dir.join("room.json"))])
+        .collect();
+    Ok(download::zip_response(entries, format!("{}_flac.zip", room.id)))
 }

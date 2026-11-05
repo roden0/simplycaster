@@ -79,13 +79,19 @@ const en = {
   closeRoom: "Close Room",
   closeConfirm: "Close Room {name}? Its Invitations expire and it cannot be reopened.",
   closePending: "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close Room {name} anyway?",
-  downloadRoom: "Download Room (zip)",
+  downloadRoom: "Download Room (original Ogg, zip)",
+  convertFlac: "Convert to FLAC",
+  convertingFlac: "Converting to FLAC…",
+  downloadFlac: "Download in FLAC (zip)",
+  flacFailed: "The FLAC conversion failed.",
+  flacHint: "FLAC opens in any editor, and corrects each Track's clock drift so long Takes stay aligned.",
   requestFailed: "Request failed ({status}).",
   errorInvalidName: "Use only lowercase letters, digits and dashes (up to 40).",
   errorNameTaken: "That name is already in this Room.",
   errorRoomFull: "A Room holds at most 5 Participants.",
   errorRecording: "A Take is being recorded: stop it before closing the Room.",
   errorClosed: "This Room is closed.",
+  errorOpen: "Close the Room first.",
 };
 
 export type MessageKey = keyof typeof en;

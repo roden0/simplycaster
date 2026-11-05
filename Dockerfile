@@ -13,7 +13,10 @@ COPY coordinator/ ./
 RUN cargo build --release --locked
 
 FROM debian:trixie-slim
-# shortcut: no FFmpeg yet; add it with the FLAC conversion (CU10, ADR 0001).
+# FFmpeg for the FLAC delivery conversion (CU10, ADR-0001); it brings the soxr resampler.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=coordinator /src/coordinator/target/release/coordinator /usr/local/bin/coordinator
 COPY --from=client /src/client/dist /app/client
 ENV BIND=0.0.0.0 \

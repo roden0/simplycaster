@@ -18,6 +18,10 @@ use tokio::io::AsyncWriteExt;
 use crate::{AppState, MAX_TRACK_BYTES, SharedRoom, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
+/// Drift marks must span this long before their slope is trusted to correct a part (ADR-0004).
+const MIN_DRIFT_SPAN_MS: f64 = 60_000.0;
+/// Beyond this the marks are wrong, not the clock: real audio clocks drift tens of ppm.
+const MAX_DRIFT_PPM: f64 = 1000.0;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +99,25 @@ impl Upload {
             length: p.complete.then_some(p.bytes),
             busy: false,
         }
+    }
+
+    /// How fast this part's audio clock ran against the Coordinator clock, in ppm, from the
+    /// least-squares slope of its drift marks; `None` when there are too few to trust.
+    pub fn drift_ppm(&self) -> Option<f64> {
+        let m = &self.drift_marks;
+        if m.len() < 3 || m.last()?.coordinator_time - m[0].coordinator_time < MIN_DRIFT_SPAN_MS {
+            return None;
+        }
+        let n = m.len() as f64;
+        let (t0, s0) = (m[0].coordinator_time, m[0].samples as f64);
+        let xs: Vec<f64> = m.iter().map(|d| d.coordinator_time - t0).collect();
+        let ys: Vec<f64> = m.iter().map(|d| d.samples as f64 - s0).collect();
+        let (mx, my) = (xs.iter().sum::<f64>() / n, ys.iter().sum::<f64>() / n);
+        let sxy: f64 = xs.iter().zip(&ys).map(|(x, y)| (x - mx) * (y - my)).sum();
+        let sxx: f64 = xs.iter().map(|x| (x - mx).powi(2)).sum();
+        let samples_per_s = sxy / sxx * 1000.0;
+        let ppm = (samples_per_s / f64::from(self.sample_rate) - 1.0) * 1e6;
+        (ppm.abs() < MAX_DRIFT_PPM).then_some(ppm)
     }
 
     pub fn is_complete(&self) -> bool {
@@ -302,4 +325,43 @@ async fn append(path: &std::path::Path, body: Body, max: u64) -> Result<(), Stri
         written += chunk.len() as u64;
     }
     out.flush().await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn part(marks: &[(f64, u64)]) -> Upload {
+        let saved = format!(
+            r#"{{"participant":"ana","part":1,"file":"x.ogg","complete":true,"bytes":1,"startTime":0,"sampleRate":48000,
+            "outputLatencyMs":null,"inputLatencyMs":null,"calibratedRoundTripMs":null,"clockOffsetMs":null,"clockRttMs":null,
+            "driftMarks":[{}]}}"#,
+            marks
+                .iter()
+                .map(|(t, s)| format!(r#"{{"samples":{s},"coordinatorTime":{t},"clockOffsetMs":0,"clockRttMs":0}}"#))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        Upload::from_saved(1, serde_json::from_str(&saved).unwrap())
+    }
+
+    #[test]
+    fn drift_from_the_slope_of_the_marks() {
+        // An audio clock 30 ppm fast, marked every 10 s for 10 min, with ±20 samples of jitter.
+        let marks: Vec<_> = (0..60)
+            .map(|i| {
+                let t = 1e12 + i as f64 * 10_000.0;
+                let jitter = if i % 2 == 0 { 20.0 } else { -20.0 };
+                (t, (i as f64 * 10.0 * 48_000.0 * 1.00003 + jitter) as u64)
+            })
+            .collect();
+        let ppm = part(&marks).drift_ppm().unwrap();
+        assert!((ppm - 30.0).abs() < 0.5, "{ppm}");
+    }
+
+    #[test]
+    fn too_few_or_absurd_marks_are_not_trusted() {
+        assert_eq!(part(&[(0.0, 0), (10_000.0, 480_000), (20_000.0, 960_000)]).drift_ppm(), None);
+        assert_eq!(part(&[(0.0, 0), (60_000.0, 2_900_000), (120_000.0, 5_800_000)]).drift_ppm(), None);
+    }
 }
