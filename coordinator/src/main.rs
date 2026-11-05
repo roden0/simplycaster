@@ -364,6 +364,8 @@ impl Room {
                             "file": u.file(),
                             "complete": u.is_complete(),
                             "bytes": u.offset,
+                            // Audio actually received; shorter than the Take if the browser stopped early.
+                            "durationMs": u.duration_ms(&self.dir),
                             "startTime": u.start_time,
                             "startOffsetMs": u.start_time - t.start_time,
                             "sampleRate": u.sample_rate,

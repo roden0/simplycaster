@@ -32,6 +32,8 @@ app.append(el("h1", t("appTitle")));
 app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
 const status = app.appendChild(el("p"));
 status.setAttribute("role", "status");
+// Shown before the microphone is enabled: with the live conversation, no headphones means echo in every Track.
+const headphonesNote = app.appendChild(el("p"));
 const micRow = app.appendChild(el("p"));
 const meterRow = app.appendChild(el("p"));
 const calibrationRow = app.appendChild(el("p"));
@@ -69,6 +71,7 @@ if (!invite) {
   status.textContent = t("noInvitation");
 } else {
   status.textContent = t("connecting");
+  headphonesNote.append(el("strong", t("useHeadphones")));
   const enable = micRow.appendChild(el("button", t("enableMicrophone")));
   enable.onclick = () => {
     enable.remove();
@@ -435,7 +438,7 @@ async function setupMicrophone() {
   meter.high = 0.8;
   meterLabel.append(" ", meter);
   micRow.append(label);
-  meterRow.append(meterLabel, el("br"), el("small", t("useHeadphones")));
+  meterRow.append(meterLabel);
 
   try {
     const rec = await createRecorder(onRecorderEvent, (state) => {

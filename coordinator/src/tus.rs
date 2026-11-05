@@ -120,6 +120,12 @@ impl Upload {
         (ppm.abs() < MAX_DRIFT_PPM).then_some(ppm)
     }
 
+    /// Length of the audio received so far (ms), from the Ogg file itself. Shorter than its
+    /// Take when the browser stopped early, e.g. closed mid-Take: the part keeps what it recorded.
+    pub fn duration_ms(&self, dir: &std::path::Path) -> Option<f64> {
+        ogg_opus_duration_ms(&dir.join(self.file()))
+    }
+
     pub fn is_complete(&self) -> bool {
         self.length == Some(self.offset)
     }
@@ -327,6 +333,25 @@ async fn append(path: &std::path::Path, body: Body, max: u64) -> Result<(), Stri
     out.flush().await.map_err(|e| e.to_string())
 }
 
+/// Opus duration of an Ogg file: granule position of the last page minus the pre-skip of the
+/// header, at 48 kHz. Reads only the head and the last 64 KB (an Ogg page is never larger).
+fn ogg_opus_duration_ms(path: &std::path::Path) -> Option<f64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut head = [0u8; 512];
+    let n = f.read(&mut head).ok()?;
+    let at = head[..n].windows(8).position(|w| w == b"OpusHead")?;
+    let pre_skip = u16::from_le_bytes(head.get(at + 10..at + 12)?.try_into().ok()?);
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(65_536))).ok()?;
+    let mut tail = Vec::new();
+    f.read_to_end(&mut tail).ok()?;
+    // The last page header: "OggS", version 0, then the granule position.
+    let page = tail.windows(5).rposition(|w| w == b"OggS\0")?;
+    let granule = i64::from_le_bytes(tail.get(page + 6..page + 14)?.try_into().ok()?);
+    (granule >= i64::from(pre_skip)).then(|| (granule - i64::from(pre_skip)) as f64 / 48.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +382,22 @@ mod tests {
             .collect();
         let ppm = part(&marks).drift_ppm().unwrap();
         assert!((ppm - 30.0).abs() < 0.5, "{ppm}");
+    }
+
+    #[test]
+    fn duration_from_the_last_ogg_page() {
+        let mut ogg = b"OggS\0\x02".to_vec();
+        ogg.extend([0u8; 22]);
+        ogg.extend(b"OpusHead\x01\x01");
+        ogg.extend(312u16.to_le_bytes());
+        ogg.extend([0u8; 300]);
+        ogg.extend(b"OggS\0\x04");
+        ogg.extend((48_000i64 * 10 + 312).to_le_bytes());
+        ogg.extend([0u8; 40]);
+        let path = std::env::temp_dir().join(format!("{}.ogg", crate::random_token()));
+        std::fs::write(&path, ogg).unwrap();
+        assert_eq!(ogg_opus_duration_ms(&path), Some(10_000.0));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

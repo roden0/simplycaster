@@ -66,13 +66,15 @@ function waitForFlac(id: string) {
 async function refresh() {
   const rooms = (await call("")) as RoomView[] | undefined;
   if (!rooms) return;
-  roomsList.replaceChildren(...(rooms.length ? rooms.map(renderRoom) : [el("p", t("noRooms"))]));
-  // Once for the whole list: it explains the FLAC button of every closed Room.
-  if (rooms.some((r) => r.closed)) {
-    const hint = el("p");
-    hint.append(el("small", t("flacHint")));
-    roomsList.append(hint);
+  if (!rooms.length) {
+    roomsList.replaceChildren(el("p", t("noRooms")));
+    return;
   }
+  // Once, above the list: it explains the FLAC button of every closed Room.
+  const hint = el("p");
+  if (rooms.some((r) => r.closed)) hint.append(el("small", t("flacHint")));
+  // A rule before each Room, so its buttons clearly belong to it.
+  roomsList.replaceChildren(hint, ...rooms.flatMap((r) => [el("hr"), renderRoom(r)]));
 }
 
 /** Creation date and time in the viewer's locale and time zone, or just the date for old Rooms. */
@@ -106,7 +108,9 @@ function renderRoom(room: RoomView): HTMLElement {
     if (!room.closed) {
       const link = el("input");
       link.readOnly = true;
-      link.size = 60;
+      // Wide enough to read, never wider than a phone screen.
+      link.style.width = "min(100%, 40em)";
+      link.style.boxSizing = "border-box";
       link.value = `${location.origin}/i/${inv.token}`;
       link.setAttribute("aria-label", t("invitationLink", { name: inv.name }));
       const copy = el("button", t("copy"));
