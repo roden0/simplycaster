@@ -141,7 +141,6 @@ function connect(invite: string) {
         if (recordingTake !== msg.take) break;
         recordingTake = 0;
         recorder!.stop(msg.stopTime - clockOffsetMs!);
-        allowSleep();
         takeStatus.textContent = t("takeStopped", { take: msg.take });
         break;
       case "replaced":
@@ -221,7 +220,6 @@ function startTrack() {
     clockRttMs: clockRttMs!,
   });
   recordingTake = take;
-  keepAwake();
   takeStatus.textContent = t(late ? "takeRejoined" : "takeStarting", { take });
   if (!late) setTimeout(() => (takeStatus.textContent = t("takeRecording", { take })), localStart - localNow());
 }
@@ -278,23 +276,20 @@ function refreshMicProblem() {
 }
 
 // The screen turning off freezes the page on mobile, and the microphone with it.
-let wakeLock: WakeLockSentinel | undefined;
+// Held for the whole stay in the Room, not just while recording: a screen that turns off
+// while waiting is already hidden at T, and a hidden page cannot take the lock.
 async function keepAwake() {
   try {
-    wakeLock = await navigator.wakeLock?.request("screen");
+    await navigator.wakeLock?.request("screen");
   } catch {
     // Not supported or refused: recording still works while the screen stays on.
   }
-}
-function allowSleep() {
-  wakeLock?.release().catch(() => {});
-  wakeLock = undefined;
 }
 
 document.addEventListener("visibilitychange", () => {
   refreshMicProblem();
   // The system drops the wake lock when the page is hidden; take it again on return.
-  if (!document.hidden && recordingTake) keepAwake();
+  if (!document.hidden && recorder) keepAwake();
 });
 
 // Uploads not yet confirmed by the Coordinator, so a reloaded page can finish them (CU7).
@@ -434,6 +429,7 @@ async function setupMicrophone() {
       showLatency(); // a new microphone needs a new calibration
     };
     recorder = rec;
+    keepAwake();
     setupCalibration(rec);
     for (const [fileName, p] of Object.entries(pendingUploads())) {
       if (p.invite === invite) rec.resumeUpload(fileName, p.uploadUrl, p.take, p.invite);
