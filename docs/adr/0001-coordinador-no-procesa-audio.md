@@ -6,6 +6,6 @@ La única excepción es la **conversión de entrega**: con la Sala ya cerrada, e
 
 ## Consequences
 
-- Las Pistas se alinean al editar mediante el Tono de sincronía, que cada navegador inserta en el mismo instante según el reloj del Coordinador; el Coordinador no alinea ni mezcla.
+- El inicio de las Pistas se alinea al editar mediante el Tono de sincronía, que cada navegador inserta en el mismo instante según el reloj del Coordinador. El Coordinador no mezcla; solo corrige la deriva al convertir a FLAC (ADR-0004).
 - La copia local se conserva hasta que el Coordinador confirma cada fragmento; lo no subido al cerrar la Sala se pierde y la Pista queda marcada como incompleta.
 - La instancia autoalojada necesita FFmpeg disponible (incluido en la imagen Docker).

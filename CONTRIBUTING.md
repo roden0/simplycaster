@@ -22,7 +22,7 @@ The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + 
 
 - `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. In iteration 0a the Room and its two links are hard-coded: `/i/host` (Host) and `/i/ana` (Guest).
 - `make test` runs the Rust tests and the client tests (`node --test`).
-- `make measure ROOM=coordinator/data/room-<id> TAKE=1` reports the sync error between the Tracks of a Take from real claps picked up by every microphone, and the audio clock drift from the drift marks (needs `ffmpeg`).
+- `make measure ROOM=coordinator/data/room-<id> TAKE=1` reports the sync error between the Tracks of a Take, from the Sync tone each Participant plays aloud and from cross-correlation of the audio, and the audio clock drift from the drift marks (needs `ffmpeg`).
 - `make types` regenerates `client/src/protocol/` from the Rust message types with `ts-rs`. Never edit those files by hand; commit them with the Rust change.
 
 Recording APIs (microphone, WebCodecs, OPFS) only work in a secure context: use `localhost` or HTTPS when testing from other devices.

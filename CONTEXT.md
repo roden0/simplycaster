@@ -43,8 +43,12 @@ El audio de un único Participante en una Toma, grabado con calidad en su propio
 _Avoid_: Grabación, stream / Recording, stream
 
 **Tono de sincronía** (en: **Sync tone**):
-Marca audible insertada en todas las Pistas de una Toma en el mismo instante según el reloj del Coordinador, para alinearlas al editar.
+Marca audible insertada en todas las Pistas de una Toma en el mismo instante según el reloj del Coordinador, para alinear su inicio al editar. Alinea el inicio con un margen de unos 15 ms, pero no la duración: de eso se ocupa la corrección de deriva (ADR-0004).
 _Avoid_: Clap, beep, marca de sincronización / Clap, beep, marker
+
+**Marca de deriva** (en: **Drift mark**):
+Anotación que cada navegador manda cada 10 s mientras graba: cuántas muestras lleva su Pista en ese instante del reloj del Coordinador. Su pendiente mide la deriva del reloj de audio de esa Pista, y con ella se corrige al convertir a FLAC.
+_Avoid_: Timestamp, checkpoint
 
 **Sincronizando** (en: **Syncing**):
 Estado de un Participante cuyas Pistas aún tienen audio pendiente de subir al Coordinador; visible para todos en la Sala, junto a "conectado" (en: *connected*).
