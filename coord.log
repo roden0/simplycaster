@@ -1,0 +1,3 @@
+Coordinator listening on http://127.0.0.1:3090, storing Rooms in ./data (0 past Rooms loaded)
+  live conversation: STUN/TURN on udp 192.168.68.74:3479
+  backoffice: /backoffice/admin  (set BACKOFFICE_TOKEN to make it secret)

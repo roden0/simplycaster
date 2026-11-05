@@ -26,4 +26,7 @@ ENV BIND=0.0.0.0 \
 # Mount persistent storage here, or Tracks are lost on every redeploy.
 VOLUME /data
 EXPOSE 3000
+# Live conversation (ADR-0005): STUN/TURN and its relays. Publish them with the same numbers
+# outside (e.g. 49160-49199:49160-49199/udp): the Coordinator tells browsers these ports.
+EXPOSE 3478/udp 49160-49199/udp
 CMD ["coordinator"]

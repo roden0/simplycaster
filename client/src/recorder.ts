@@ -192,5 +192,7 @@ export async function createRecorder(onEvent: (e: WorkerEvent) => void, onMicSta
     resumeUpload,
     driftMark,
     level,
+    /** The open microphone, also sent to the live conversation. */
+    micTrack: () => source?.mediaStream.getAudioTracks()[0],
   };
 }

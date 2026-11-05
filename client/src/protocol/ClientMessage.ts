@@ -5,4 +5,4 @@ export type ClientMessage = { "type": "ping", clientTime: number, } | { "type": 
 /**
  * The clock estimate `coordinator_time` was computed with, to tell clock noise from audio drift.
  */
-clockOffsetMs: number, clockRttMs: number, } | { "type": "record" } | { "type": "stop" };
+clockOffsetMs: number, clockRttMs: number, } | { "type": "signal", to: string, data: string, } | { "type": "record" } | { "type": "stop" };

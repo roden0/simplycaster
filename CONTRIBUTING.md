@@ -35,4 +35,5 @@ The root `Dockerfile` builds one image with the Coordinator and the client. On C
 - **Ports exposes**: `3000`. The platform proxy terminates HTTPS, which browsers require for recording; WebSockets pass through it.
 - **Persistent storage**: mount a volume at `/data`, or Tracks are lost on every redeploy.
 - **Environment**: `BACKOFFICE_TOKEN` with a long random token (e.g. `openssl rand -hex 16`). The backoffice is then `https://<domain>/backoffice/<token>`. Without it the backoffice is the guessable `/backoffice/admin`, so never deploy publicly without it. Invitation links get random tokens of their own.
+- **Live conversation** (ADR-0005): set `TURN_PUBLIC_IP` to the server's public IPv4, not the domain (a proxied domain does not reach UDP). In Coolify's *Ports Mappings* add `3478:3478/udp,49160-49199:49160-49199/udp` and open the same UDP ports in the server firewall. The ports must keep the same numbers outside, because the Coordinator tells browsers to use them; change them with `TURN_PORT` and `TURN_RELAY_PORTS`. Without `TURN_PUBLIC_IP` only direct connections work, enough for a local network.
 

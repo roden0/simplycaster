@@ -89,6 +89,11 @@ pub enum ClientMessage {
         clock_offset_ms: f64,
         clock_rtt_ms: f64,
     },
+    /// WebRTC signalling for the live conversation (ADR-0005), relayed as is to Participant `to`.
+    Signal {
+        to: String,
+        data: String,
+    },
     /// Host only.
     Record,
     /// Host only.
@@ -105,6 +110,13 @@ pub enum ServerMessage {
         /// Frequency of this Participant's audible Sync tone: distinct per Participant, so each
         /// Track shows whose speakers it picked up (calibration tests in one room).
         tone_hz: f64,
+        /// STUN and TURN for the live conversation; empty when the Coordinator runs no TURN.
+        ice_servers: Vec<IceServer>,
+    },
+    /// WebRTC signalling from Participant `from` (see `ClientMessage::Signal`).
+    Signal {
+        from: String,
+        data: String,
     },
     /// `coordinator_time` is milliseconds since the Unix epoch.
     Pong {
@@ -211,4 +223,18 @@ pub enum BackofficeError {
     Closed,
     /// Downloads and FLAC need a closed Room.
     Open,
+}
+
+/// Shaped like the browser's `RTCIceServer`.
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential: Option<String>,
 }

@@ -1,0 +1,17 @@
+{
+  "closed": false,
+  "created": "2026-11-05",
+  "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
+  "participants": [
+    {
+      "name": "host",
+      "role": "host"
+    },
+    {
+      "name": "ana",
+      "role": "guest"
+    }
+  ],
+  "room": "directo",
+  "takes": []
+}

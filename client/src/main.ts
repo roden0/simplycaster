@@ -1,7 +1,8 @@
-import { t } from "./i18n.ts";
+import { t, type MessageKey } from "./i18n.ts";
 import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
 import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
+import { createLive, type Live } from "./live.ts";
 import type { MicProblem } from "./protocol/MicProblem.ts";
 import type { ClientMessage } from "./protocol/ClientMessage.ts";
 import type { ServerMessage } from "./protocol/ServerMessage.ts";
@@ -60,6 +61,9 @@ let activeTake: { take: number; startTime: number } | undefined;
 /** Take this browser is recording a part of (0 = none). */
 let recordingTake = 0;
 let send: (msg: ClientMessage) => void = () => {};
+/** The live conversation (0c), from the welcome message on. */
+let live: Live | undefined;
+let lastRoster: ParticipantView[] = [];
 
 if (!invite) {
   status.textContent = t("noInvitation");
@@ -110,6 +114,13 @@ function connect(invite: string) {
         });
         isHost = msg.role === "host";
         toneHz = msg.toneHz;
+        live ??= createLive(
+          msg.name,
+          (to, data) => send({ type: "signal", to, data }),
+          () => renderRoster(lastRoster),
+        );
+        live.setIceServers(msg.iceServers);
+        if (recorder) live.setTrack(recorder.micTrack());
         if (isHost) renderHostControls();
         break;
       case "pong":
@@ -124,7 +135,12 @@ function connect(invite: string) {
         }
         break;
       case "roster":
+        lastRoster = msg.participants;
         renderRoster(msg.participants);
+        live?.roster(msg.participants.filter((p) => p.status === "connected").map((p) => p.name));
+        break;
+      case "signal":
+        live?.receive(msg.from, msg.data);
         break;
       case "takeStarted":
         activeTake = { take: msg.take, startTime: msg.startTime };
@@ -140,10 +156,12 @@ function connect(invite: string) {
         break;
       case "replaced":
         ended = true;
+        live?.leave();
         status.textContent = t("openedElsewhere");
         break;
       case "roomClosed":
         ended = true;
+        live?.leave();
         status.textContent = t("roomClosed");
         break;
       case "takeTracks":
@@ -174,14 +192,25 @@ function renderRoster(participants: ParticipantView[]) {
           ? t("clockPending")
           : t("clockOffset", { offset: p.clockOffsetMs.toFixed(1), rtt: p.clockRttMs!.toFixed(1) });
       const role = t(p.role === "host" ? "roleHost" : "roleGuest");
+      const liveState = p.name === myName ? undefined : live?.state(p.name);
       const state =
         t(p.status === "connected" ? "statusConnected" : "statusDisconnected") +
         (p.syncing ? ` · ${t("statusSyncing")}` : "") +
-        (p.micProblem ? ` · ⚠ ${t(MIC_PROBLEM_LABEL[p.micProblem])}` : "");
+        (p.micProblem ? ` · ⚠ ${t(MIC_PROBLEM_LABEL[p.micProblem])}` : "") +
+        (liveState && LIVE_LABEL[liveState] ? ` · ${t(LIVE_LABEL[liveState]!)}` : "");
       return el("li", `${p.name} · ${role} · ${state}${p.status === "connected" ? ` · ${clock}` : ""}`);
     }),
   );
 }
+
+/** How the live conversation with each other Participant is going. */
+const LIVE_LABEL: Partial<Record<RTCPeerConnectionState, MessageKey>> = {
+  new: "liveConnecting",
+  connecting: "liveConnecting",
+  connected: "liveConnected",
+  disconnected: "liveInterrupted",
+  failed: "liveFailed",
+};
 
 // --- Takes (CU4, CU5) ---
 
@@ -425,9 +454,11 @@ async function setupMicrophone() {
     );
     select.onchange = async () => {
       await rec.openMicrophone(select.value);
+      live?.setTrack(rec.micTrack());
       showLatency(); // a new microphone needs a new calibration
     };
     recorder = rec;
+    live?.setTrack(rec.micTrack());
     keepAwake();
     setupCalibration(rec);
     for (const [fileName, p] of Object.entries(pendingUploads())) {

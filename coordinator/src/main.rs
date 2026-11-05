@@ -1,6 +1,7 @@
 mod backoffice;
 mod download;
 mod flac;
+mod live;
 mod protocol;
 mod tus;
 
@@ -32,7 +33,7 @@ use tower_http::{
 };
 
 use protocol::{
-    BackofficeError, ClientMessage, FlacState, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
+    BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
     TrackView,
 };
 
@@ -44,6 +45,8 @@ const START_LEAD_MS: f64 = 1500.0;
 const STOP_LEAD_MS: f64 = 500.0;
 /// Upper bound for one uploaded Track, so a client cannot fill the disk.
 const MAX_TRACK_BYTES: u64 = 4 << 30;
+/// WebRTC offers and candidates are a few KB; anything bigger is not signalling.
+const MAX_SIGNAL_BYTES: usize = 64 << 10;
 
 struct Participant {
     /// Secret of this Participant's Invitation link, `/i/{token}`.
@@ -448,6 +451,8 @@ pub struct Coordinator {
     rooms: Mutex<Vec<SharedRoom>>,
     data: PathBuf,
     backoffice_token: String,
+    /// STUN/TURN for the live conversation (ADR-0005); `None` when not configured.
+    turn: Option<live::Turn>,
 }
 
 type AppState = Arc<Coordinator>;
@@ -518,10 +523,11 @@ async fn ws_handler(ws: WebSocketUpgrade, Query(params): Query<WsParams>, State(
     let Some((room, name, _)) = state.by_invite(&params.invite) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    ws.on_upgrade(move |socket| handle_socket(socket, name, room))
+    let ice_servers = state.turn.as_ref().map(live::Turn::ice_servers).unwrap_or_default();
+    ws.on_upgrade(move |socket| handle_socket(socket, name, room, ice_servers))
 }
 
-async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom) {
+async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_servers: Vec<IceServer>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (conn_id, role) = {
         let mut room = shared.lock().unwrap();
@@ -540,6 +546,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom) {
             name: name.clone(),
             role: p.view.role,
             tone_hz,
+            ice_servers,
         });
         let role = p.view.role;
         // Catch up with the current Take (CU7): keep recording in a new part, or stop.
@@ -624,6 +631,20 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom) {
                     });
                 }
             }
+            ClientMessage::Signal { to, data } => {
+                if data.len() > MAX_SIGNAL_BYTES {
+                    eprintln!("{name}: ignoring a signal of {} bytes", data.len());
+                    continue;
+                }
+                let room = shared.lock().unwrap();
+                let peer = room.participants.iter().find(|p| p.view.name == to);
+                if let Some((_, tx)) = peer.and_then(|p| p.conn.as_ref()) {
+                    let _ = tx.send(ServerMessage::Signal {
+                        from: name.clone(),
+                        data,
+                    });
+                }
+            }
             ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {
                 eprintln!("{name}: only the Host can record or stop");
             }
@@ -667,14 +688,17 @@ async fn main() {
     let backoffice_token = std::env::var("BACKOFFICE_TOKEN").unwrap_or_else(|_| "admin".into());
     let secret = backoffice_token != "admin";
 
+    let turn = live::Turn::start().await.unwrap_or_else(|e| panic!("cannot start TURN: {e}"));
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
         rooms: Mutex::new(rooms),
         data: data.clone(),
         backoffice_token,
+        turn,
     });
     let link = format!("/backoffice/{}", state.backoffice_token);
+    let live_info = state.turn.as_ref().map(live::Turn::describe);
 
     let api = "/api/backoffice/{token}/rooms";
     let app = Router::new()
@@ -711,6 +735,10 @@ async fn main() {
         data.display(),
         past
     );
+    match live_info {
+        Some(t) => println!("  live conversation: {t}"),
+        None => println!("  live conversation: no STUN/TURN (set TURN_PUBLIC_IP); only direct connections"),
+    }
     if secret {
         println!("  backoffice: /backoffice/<BACKOFFICE_TOKEN>");
     } else {
