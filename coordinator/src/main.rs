@@ -156,6 +156,10 @@ fn backoffice_token(token: Option<String>, ip: IpAddr) -> Result<String, String>
     }
 }
 
+async fn to_backoffice() -> axum::response::Redirect {
+    axum::response::Redirect::permanent("/backoffice")
+}
+
 #[tokio::main]
 async fn main() {
     let data = std::env::var("DATA_DIR")
@@ -197,6 +201,10 @@ async fn main() {
         .route("/takes/{take}/tracks/{file}", get(download::track))
         .route("/api/session", post(ws::join))
         .route("/backoffice", get(client_files::backoffice))
+        // Old links (/backoffice/<token>, ADR-0009) and a trailing slash would fall to the Participant
+        // page: send them to the sign-in, which also drops the token from the address bar.
+        .route("/backoffice/", get(to_backoffice))
+        .route("/backoffice/{*old}", get(to_backoffice))
         .route(
             "/api/backoffice/session",
             post(backoffice::sign_in).delete(backoffice::sign_out),
