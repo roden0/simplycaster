@@ -99,7 +99,7 @@ const en = {
   convertingFlac: "Converting to FLAC…",
   downloadFlac: "Download in FLAC (zip)",
   flacFailed: "The FLAC conversion failed.",
-  flacHint: "FLAC opens in any editor, and corrects each Track's clock drift so long Takes stay aligned.",
+  flacHint: "FLAC opens in any editor: one file per Participant and Take, all as long as the Take, with each clock's drift corrected and silence where audio was lost. Place them all at zero.",
   requestFailed: "Request failed ({status}).",
   errorInvalidName: "Use only lowercase letters, digits and dashes (up to 40).",
   errorNameTaken: "That name is already in this Room.",
