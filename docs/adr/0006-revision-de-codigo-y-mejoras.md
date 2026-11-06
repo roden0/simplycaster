@@ -26,6 +26,7 @@ Esfuerzo: **S** (menos de medio día), **M** (uno o dos días), **L** (más, y c
 - Problema: sin la variable, el token es `admin` (`main.rs:697`), y la imagen Docker escucha en `0.0.0.0` (`Dockerfile:22`). Un despliegue al que se le olvide la variable expone `/backoffice/admin` a internet; solo lo avisa un `println` (`main.rs:754`).
 - Propuesta: fallar cerrado. Si la dirección de escucha no es de loopback y no hay `BACKOFFICE_TOKEN`, el Coordinador no arranca. En local todo sigue igual.
 - Riesgo: una función pura `backoffice_token(env, ip) -> Result<String, String>`, con su test.
+- Actualización (2026-11-06): el `docker-compose.yml` publicado ya exige `BACKOFFICE_TOKEN`, pero la imagen sola (Coolify, `docker run`) sigue arrancando sin él. El paso sigue haciendo falta.
 
 **A4. Mensajes del WebSocket de hasta 64 MiB, y se registran enteros (S)**
 - Problema: el WebSocket usa el límite por defecto de tungstenite (64 MiB). El tamaño de las señales se comprueba después de deserializar (`main.rs:644`), y un mensaje mal formado se escribe entero en el log (`main.rs:598`).
@@ -36,6 +37,7 @@ Esfuerzo: **S** (menos de medio día), **M** (uno o dos días), **L** (más, y c
 - Problema: `make test` (`Makefile:21-23`) ejecuta `cargo test` y `node --test`, que quita los tipos sin comprobarlos. `tsc` solo corre en `npm run build`. Además, `cargo fmt --check` falla ya en `main.rs`, `live.rs`, `download.rs`, `flac.rs` y `backoffice.rs`, aunque hay un `rustfmt.toml`. La imagen Docker no regenera `client/src/protocol/` (`Dockerfile:3-8`): si se olvida `make types` antes del commit, se construye con tipos viejos.
 - Propuesta: un commit solo con `cargo fmt`. Después, `make check` = `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + `npx tsc --noEmit` + `make test` + `git diff --exit-code client/src/protocol`.
 - Riesgo: ninguno sobre el comportamiento. El commit de formato va aparte para que el historial siga legible.
+- Actualización (2026-11-06): hecho. La CI ejecuta `make check` y construye la imagen Docker en cada pull request, y ambos son obligatorios para fusionar en `main`; así un `make types` olvidado ya no llega a la imagen.
 
 **A6. El cliente envía por un WebSocket que aún no está abierto (S)**
 - Problema: `send` apunta al socket nuevo antes de que se abra (`client/src/main.ts:88`). Durante la reconexión (`main.ts:185-186`) lo siguen llamando las Marcas de deriva (`main.ts:258-269`), el estado del micrófono (`main.ts:306`, desde `visibilitychange` y el Worklet) y la señalización del directo (`main.ts:122`). `WebSocket.send` lanza `InvalidStateError` cuando el socket está en `CONNECTING`, así que salen excepciones sin capturar justo durante un corte.

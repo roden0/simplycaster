@@ -72,7 +72,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 ## Antes de cada commit
 
 - Commits pequeños y que se entiendan solos, en inglés.
-- `make check` en verde: formato, clippy `-D warnings`, `tsc --noEmit`, tests y `client/src/protocol/` sin diferencias. **[pendiente: A5]** Hasta entonces, `make test`.
+- `make check` en verde: formato, clippy `-D warnings`, `tsc --noEmit`, tests y `client/src/protocol/` sin diferencias. La CI lo exige en cada pull request, junto con que la imagen Docker compile.
 - Un cambio que toque grabación, subida, sincronía o directo se prueba en dev (Coolify, que despliega cada push a `main`) antes de darlo por bueno y de empezar el siguiente paso. *Por qué*: el Worklet, WebCodecs, OPFS y WebRTC no se prueban sin navegador ni dispositivos reales.
 - Un commit que solo da formato o mueve código no cambia comportamiento, y va aparte.
 
