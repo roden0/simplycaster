@@ -47,6 +47,8 @@ const STOP_LEAD_MS: f64 = 500.0;
 const MAX_TRACK_BYTES: u64 = 4 << 30;
 /// WebRTC offers and candidates are a few KB; anything bigger is not signalling.
 const MAX_SIGNAL_BYTES: usize = 64 << 10;
+/// Largest WebSocket message: a signal plus its JSON envelope. tungstenite's default is 64 MiB.
+const MAX_WS_MESSAGE_BYTES: usize = 2 * MAX_SIGNAL_BYTES;
 
 struct Participant {
     /// Secret of this Participant's Invitation link, `/i/{token}`.
@@ -543,12 +545,14 @@ async fn ws_handler(ws: WebSocketUpgrade, Query(params): Query<WsParams>, State(
         return StatusCode::NOT_FOUND.into_response();
     };
     let ice_servers = state.turn.as_ref().map(live::Turn::ice_servers).unwrap_or_default();
-    ws.on_upgrade(move |socket| handle_socket(socket, name, room, ice_servers))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, name, room, ice_servers))
 }
 
 async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_servers: Vec<IceServer>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let (conn_id, role) = {
+    let (conn_id, role, room_id) = {
         let mut room = shared.lock().unwrap();
         room.next_conn_id += 1;
         let conn_id = room.next_conn_id;
@@ -585,7 +589,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
             }
         }
         room.broadcast_roster();
-        (conn_id, role)
+        (conn_id, role, room.id.clone())
     };
 
     let (mut sink, mut stream) = socket.split();
@@ -605,7 +609,12 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
     while let Some(Ok(msg)) = stream.next().await {
         let Message::Text(text) = msg else { continue };
         let Ok(msg) = serde_json::from_str::<ClientMessage>(&text) else {
-            eprintln!("{name}: ignoring malformed message: {text}");
+            // Never the whole message: it comes from outside.
+            let start: String = text.chars().take(200).collect();
+            eprintln!(
+                "{room_id} {name}: ignoring a malformed message of {} bytes: {start}",
+                text.len()
+            );
             continue;
         };
         match msg {
@@ -652,7 +661,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
             }
             ClientMessage::Signal { to, data } => {
                 if data.len() > MAX_SIGNAL_BYTES {
-                    eprintln!("{name}: ignoring a signal of {} bytes", data.len());
+                    eprintln!("{room_id} {name}: ignoring a signal of {} bytes", data.len());
                     continue;
                 }
                 let room = shared.lock().unwrap();
@@ -665,7 +674,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
                 }
             }
             ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {
-                eprintln!("{name}: only the Host can record or stop");
+                eprintln!("{room_id} {name}: only the Host can record or stop");
             }
             ClientMessage::Record => shared.lock().unwrap().start_take(),
             ClientMessage::Stop => shared.lock().unwrap().stop_take(),

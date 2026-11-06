@@ -31,7 +31,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 - Rust: `Result<_, String>` basta mientras nadie necesite distinguir errores. `unwrap`/`expect` solo para invariantes (cerrojos, datos que el propio Coordinador construyó) o al arrancar.
 - Un error de E/S o de entrada externa nunca hace pánico en un handler. Se registra y se responde con un código de estado.
-- Logs con `eprintln!`, que empiezan por el id de la Sala o de la subida, y nunca con el contenido entero de un mensaje externo (como mucho su longitud o un prefijo). **[pendiente: A4]** y los logs de `main.rs:598`, `645` y `658`.
+- Logs con `eprintln!`, que empiezan por el id de la Sala o de la subida, y nunca con el contenido entero de un mensaje externo (como mucho su longitud o un prefijo).
 - TypeScript: un `catch` vacío lleva un comentario con el porqué (como `keepAwake`), o registra con `console.warn`.
 - Un fallo que el usuario debe conocer se muestra con un mensaje del catálogo, no con `String(e)` a secas. **[pendiente: B9]**
 
@@ -52,7 +52,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 ## Seguridad en los límites de confianza
 
 - Los nombres de fichero se construyen en el Coordinador a partir de nombres validados (`valid_name`); nunca se toma una ruta del cliente. Solo se sirven ficheros listados en la Sala. Así es hoy.
-- Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes. **[pendiente: A4, B6]**
+- Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes. **[pendiente: B6]**
 - Secretos de 128 bits aleatorios. Sin `BACKOFFICE_TOKEN`, el Coordinador solo arranca en loopback (falla cerrado).
 - Cada handler del backoffice comprueba el secreto antes de nada. Con JWT, la comprobación pasa a un extractor y los secretos salen de las URL. **[pendiente: B10]**
 - Las herramientas externas (FFmpeg) se lanzan con argumentos, nunca a través de una shell.
