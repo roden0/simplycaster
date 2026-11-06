@@ -36,7 +36,8 @@ impl Turn {
     /// Starts the server when `TURN_PUBLIC_IP` is set: the address browsers reach it at.
     /// It listens on UDP `TURN_PORT` (3478) and relays on the UDP range `TURN_RELAY_PORTS`.
     pub async fn start() -> Result<Option<Turn>, String> {
-        let Ok(ip) = std::env::var("TURN_PUBLIC_IP") else {
+        // Empty counts as unset: docker-compose passes `TURN_PUBLIC_IP=` when .env leaves it blank.
+        let Some(ip) = std::env::var("TURN_PUBLIC_IP").ok().filter(|ip| !ip.is_empty()) else {
             return Ok(None);
         };
         let ip: IpAddr = ip.parse().map_err(|e| format!("TURN_PUBLIC_IP: {e}"))?;
