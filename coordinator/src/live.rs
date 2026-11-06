@@ -41,7 +41,9 @@ impl Turn {
             return Ok(None);
         };
         let ip: IpAddr = ip.parse().map_err(|e| format!("TURN_PUBLIC_IP: {e}"))?;
-        let port: u16 = env_or("TURN_PORT", "3478").parse().map_err(|e| format!("TURN_PORT: {e}"))?;
+        let port: u16 = env_or("TURN_PORT", "3478")
+            .parse()
+            .map_err(|e| format!("TURN_PORT: {e}"))?;
         let (min_port, max_port) = parse_range(&env_or("TURN_RELAY_PORTS", "49160-49199"))?;
 
         let conn = UdpSocket::bind(("0.0.0.0", port))
@@ -80,8 +82,8 @@ impl Turn {
 
     /// What one connection needs to reach the others: STUN, and TURN with its own credentials.
     pub fn ice_servers(&self) -> Vec<IceServer> {
-        let (username, credential) = generate_long_term_credentials(&self.secret, CREDENTIALS_TTL)
-            .expect("the system clock is before 1970");
+        let (username, credential) =
+            generate_long_term_credentials(&self.secret, CREDENTIALS_TTL).expect("the system clock is before 1970");
         vec![IceServer {
             urls: vec![
                 format!("stun:{}", self.addr),
@@ -101,7 +103,10 @@ fn env_or(name: &str, default: &str) -> String {
 fn parse_range(s: &str) -> Result<(u16, u16), String> {
     let bad = || format!("TURN_RELAY_PORTS must look like 49160-49199, not {s:?}");
     let (a, b) = s.split_once('-').ok_or_else(bad)?;
-    let (a, b): (u16, u16) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
+    let (a, b): (u16, u16) = (
+        a.trim().parse().map_err(|_| bad())?,
+        b.trim().parse().map_err(|_| bad())?,
+    );
     if a == 0 || b < a {
         return Err(bad());
     }

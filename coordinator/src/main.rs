@@ -33,8 +33,8 @@ use tower_http::{
 };
 
 use protocol::{
-    BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
-    TrackView,
+    BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role,
+    RoomView, ServerMessage, TrackView,
 };
 
 /// A Room holds the Host and up to four Guests.
@@ -155,7 +155,8 @@ impl Room {
                 start_time: t.start_time,
                 stop_time: t.stop_time,
             });
-            room.uploads.extend(t.tracks.into_iter().map(|p| tus::Upload::from_saved(take, p)));
+            room.uploads
+                .extend(t.tracks.into_iter().map(|p| tus::Upload::from_saved(take, p)));
         }
         room.take = room.takes.len() as u32;
         // FLACs are renamed into place only when complete, so all present means converted.
@@ -166,7 +167,11 @@ impl Room {
         for u in &room.uploads {
             if !people.iter().any(|p| p.name == u.participant) {
                 // In 0a the Host was always "host".
-                let role = if u.participant == "host" { Role::Host } else { Role::Guest };
+                let role = if u.participant == "host" {
+                    Role::Host
+                } else {
+                    Role::Guest
+                };
                 people.push(SavedParticipant {
                     name: u.participant.clone(),
                     role,
@@ -697,7 +702,9 @@ async fn main() {
     let backoffice_token = std::env::var("BACKOFFICE_TOKEN").unwrap_or_else(|_| "admin".into());
     let secret = backoffice_token != "admin";
 
-    let turn = live::Turn::start().await.unwrap_or_else(|e| panic!("cannot start TURN: {e}"));
+    let turn = live::Turn::start()
+        .await
+        .unwrap_or_else(|e| panic!("cannot start TURN: {e}"));
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
@@ -718,7 +725,10 @@ async fn main() {
         .route("/takes/{take}/tracks/{file}", get(download::track))
         .route_service("/backoffice/{token}", ServeFile::new(dist.join("backoffice.html")))
         .route(api, get(backoffice::list).post(backoffice::create_room))
-        .route(&format!("{api}/{{id}}/invitations"), post(backoffice::create_invitation))
+        .route(
+            &format!("{api}/{{id}}/invitations"),
+            post(backoffice::create_invitation),
+        )
         .route(&format!("{api}/{{id}}/close"), post(backoffice::close))
         .route(&format!("{api}/{{id}}/zip"), get(backoffice::zip))
         .route(&format!("{api}/{{id}}/flac"), post(backoffice::convert_flac))

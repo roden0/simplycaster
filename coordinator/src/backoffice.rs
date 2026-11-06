@@ -112,7 +112,10 @@ pub async fn close(
 }
 
 /// CU9: the closed Room as one folder: every Track part, complete or not, and `room.json`.
-pub async fn zip(Path((token, id)): Path<(String, String)>, State(state): State<AppState>) -> Result<Response, Response> {
+pub async fn zip(
+    Path((token, id)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<Response, Response> {
     check(&state, &token)?;
     let shared = room(&state, &id)?;
     let room = shared.lock().unwrap();

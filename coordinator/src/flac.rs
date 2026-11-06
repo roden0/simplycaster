@@ -51,9 +51,7 @@ pub async fn convert_all(jobs: Vec<Job>) -> Result<(), String> {
         tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
     }
     for job in &jobs {
-        convert(job)
-            .await
-            .map_err(|e| format!("{}: {e}", job.ogg.display()))?;
+        convert(job).await.map_err(|e| format!("{}: {e}", job.ogg.display()))?;
     }
     Ok(())
 }

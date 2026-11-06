@@ -402,7 +402,13 @@ mod tests {
 
     #[test]
     fn too_few_or_absurd_marks_are_not_trusted() {
-        assert_eq!(part(&[(0.0, 0), (10_000.0, 480_000), (20_000.0, 960_000)]).drift_ppm(), None);
-        assert_eq!(part(&[(0.0, 0), (60_000.0, 2_900_000), (120_000.0, 5_800_000)]).drift_ppm(), None);
+        assert_eq!(
+            part(&[(0.0, 0), (10_000.0, 480_000), (20_000.0, 960_000)]).drift_ppm(),
+            None
+        );
+        assert_eq!(
+            part(&[(0.0, 0), (60_000.0, 2_900_000), (120_000.0, 5_800_000)]).drift_ppm(),
+            None
+        );
     }
 }
