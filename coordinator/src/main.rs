@@ -813,6 +813,68 @@ mod tests {
         }
     }
 
+    /// A Room folder named `id` holding `json` as its room.json.
+    fn room_folder(id: &str, json: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(random_token()).join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("room.json"), json).unwrap();
+        dir
+    }
+
+    fn saved_json(dir: &std::path::Path) -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(dir.join("room.json")).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_0a_room_loads_with_what_it_lacks_derived() {
+        // 0a saved no name, date nor participants: they come from the folder, the first Take and the parts.
+        let dir = room_folder("prueba", include_str!("testdata/room-0a.json"));
+        let room = Room::load(dir.clone()).unwrap();
+        assert!(room.closed);
+        assert_eq!((room.id.as_str(), room.name.as_str()), ("prueba", "prueba"));
+        assert_eq!((room.created.as_str(), room.created_at), ("2026-11-04", None));
+        let people: Vec<_> = room
+            .participants
+            .iter()
+            .map(|p| (p.view.name.as_str(), p.view.role))
+            .collect();
+        assert_eq!(people, [("host", Role::Host), ("ana", Role::Guest)]);
+        assert_eq!(room.take_count(), 1);
+        let parts: Vec<_> = room
+            .uploads
+            .iter()
+            .map(|u| (u.id.as_str(), u.part, u.is_complete()))
+            .collect();
+        assert_eq!(
+            parts,
+            [("t01_host", 1, true), ("t01_ana", 1, false), ("t01_ana_p2", 2, true)]
+        );
+        assert_eq!(room.uploads[0].drift_marks.len(), 1);
+        assert_eq!(room.uploads[1].calibrated_round_trip_ms, Some(180.0));
+
+        // Saved again it gains the current fields, and loads the same.
+        room.save_metadata();
+        let again = Room::load(dir.clone()).unwrap();
+        assert_eq!((again.name.as_str(), again.created.as_str()), ("prueba", "2026-11-04"));
+        assert_eq!(again.participants.len(), 2);
+        assert_eq!(again.uploads.len(), 3);
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_current_room_is_saved_back_unchanged() {
+        let original = include_str!("testdata/room-current.json");
+        let dir = room_folder("directo_2026-11-05", original);
+        let room = Room::load(dir.clone()).unwrap();
+        room.save_metadata();
+        // Every field survives a load and a save, as the editor reading room.json expects.
+        assert_eq!(
+            saved_json(&dir),
+            serde_json::from_str::<serde_json::Value>(original).unwrap()
+        );
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
     #[test]
     fn the_backoffice_fails_closed_off_loopback() {
         let local: IpAddr = "127.0.0.1".parse().unwrap();

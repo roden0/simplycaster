@@ -1,0 +1,63 @@
+{
+  "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
+  "takes": [
+    {
+      "take": 1,
+      "startTime": 1793800000000.0,
+      "stopTime": 1793800600000.0,
+      "tracks": [
+        {
+          "participant": "host",
+          "part": 1,
+          "file": "t01_host.ogg",
+          "complete": true,
+          "bytes": 1000,
+          "startTime": 1793800000000.0,
+          "startOffsetMs": 0.0,
+          "sampleRate": 48000,
+          "toneHz": 1000.0,
+          "outputLatencyMs": 12.5,
+          "inputLatencyMs": null,
+          "calibratedRoundTripMs": null,
+          "clockOffsetMs": -3.2,
+          "clockRttMs": 40.0,
+          "driftMarks": [{ "samples": 480000, "coordinatorTime": 1793800010000.0, "clockOffsetMs": -3.2, "clockRttMs": 40.0 }]
+        },
+        {
+          "participant": "ana",
+          "part": 1,
+          "file": "t01_ana.ogg",
+          "complete": false,
+          "bytes": 500,
+          "startTime": 1793800000000.0,
+          "startOffsetMs": 0.0,
+          "sampleRate": 44100,
+          "toneHz": 1500.0,
+          "outputLatencyMs": null,
+          "inputLatencyMs": null,
+          "calibratedRoundTripMs": 180.0,
+          "clockOffsetMs": 7.0,
+          "clockRttMs": 55.0,
+          "driftMarks": []
+        },
+        {
+          "participant": "ana",
+          "part": 2,
+          "file": "t01_ana_p2.ogg",
+          "complete": true,
+          "bytes": 300,
+          "startTime": 1793800300000.0,
+          "startOffsetMs": 300000.0,
+          "sampleRate": 44100,
+          "toneHz": 1500.0,
+          "outputLatencyMs": null,
+          "inputLatencyMs": null,
+          "calibratedRoundTripMs": 180.0,
+          "clockOffsetMs": 7.0,
+          "clockRttMs": 55.0,
+          "driftMarks": []
+        }
+      ]
+    }
+  ]
+}
