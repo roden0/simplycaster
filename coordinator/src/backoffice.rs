@@ -63,7 +63,7 @@ pub async fn create_room(
 ) -> Result<Json<RoomView>, Response> {
     check(&state, &token)?;
     let (name, host) = (normalize(&req.name), normalize(&req.host));
-    if !crate::valid_name(&name) {
+    if !crate::room::valid_name(&name) {
         return Err(error(BackofficeError::InvalidName));
     }
     let mut rooms = state.rooms.lock().unwrap();
