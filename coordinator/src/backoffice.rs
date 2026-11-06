@@ -170,15 +170,7 @@ pub async fn convert_flac(
     }
     if matches!(room.flac, FlacState::None | FlacState::Failed) {
         room.flac = FlacState::Converting;
-        let jobs = room
-            .uploads
-            .iter()
-            .map(|u| flac::Job {
-                ogg: room.dir.join(u.file()),
-                flac: room.flac_path(u),
-                drift_ppm: u.drift_ppm(),
-            })
-            .collect();
+        let jobs = room.flac_jobs();
         let shared = shared.clone();
         tokio::spawn(async move {
             let result = flac::convert_all(jobs).await;
@@ -203,9 +195,8 @@ pub async fn flac_zip(_: Admin, Path(id): Path<String>, State(state): State<AppS
         return Err(StatusCode::CONFLICT.into_response());
     }
     let entries = room
-        .uploads
-        .iter()
-        .map(|u| (format!("{}/{}.flac", room.id, u.id), room.flac_path(u)))
+        .flac_files()
+        .into_iter()
         .chain([(format!("{}/room.json", room.id), room.dir.join("room.json"))])
         .collect();
     Ok(download::zip_response(entries, format!("{}_flac.zip", room.id)))

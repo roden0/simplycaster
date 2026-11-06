@@ -10,7 +10,7 @@ use crate::protocol::{
     RoomView, ServerMessage, TrackView,
 };
 use crate::room_file::{self, InvitationFile, ParticipantFile, RoomFile, TakeFile};
-use crate::{MAX_SIGNAL_BYTES, flac, now_ms, random_token, tus, utc_date};
+use crate::{MAX_SIGNAL_BYTES, flac, now_ms, random_token, realign, tus, utc_date};
 
 /// A Room holds the Host and up to four Guests.
 pub(crate) const MAX_PARTICIPANTS: usize = 5;
@@ -155,7 +155,8 @@ impl Room {
                 .extend(t.tracks.into_iter().map(|p| tus::Upload::from_file(take, p)));
         }
         // FLACs are renamed into place only when complete, so all present means converted.
-        if !room.uploads.is_empty() && room.uploads.iter().all(|u| room.flac_path(u).is_file()) {
+        let flacs = room.flac_files();
+        if !flacs.is_empty() && flacs.iter().all(|(_, path)| path.is_file()) {
             room.flac = FlacState::Ready;
         }
         // room.json may lag behind the disk: resume each unfinished part from what the file holds,
@@ -200,8 +201,66 @@ impl Room {
         self.takes.len() as u32
     }
 
-    pub(crate) fn flac_path(&self, u: &tus::Upload) -> PathBuf {
-        flac::path(&self.dir, &u.id)
+    /// Where the FLAC of a Participant's Track of a Take goes: named like its first part (ADR-0010).
+    pub(crate) fn flac_path(&self, take: u32, name: &str) -> PathBuf {
+        flac::path(&self.dir, &track_stem(&self.id, take, name, 1))
+    }
+
+    /// Zip entry and file of every FLAC of the Room: one per Participant and Take.
+    pub(crate) fn flac_files(&self) -> Vec<(String, PathBuf)> {
+        (1..=self.take_count())
+            .flat_map(|take| self.take_expected(take).into_iter().map(move |name| (take, name)))
+            .map(|(take, name)| {
+                let path = self.flac_path(take, &name);
+                let file = path.file_name().unwrap().to_string_lossy().into_owned();
+                (format!("{}/{file}", self.id), path)
+            })
+            .collect()
+    }
+
+    /// How the FLAC delivery builds each Track (ADR-0010): its parts placed from T to the end of the
+    /// Take, with silence where audio went missing.
+    pub(crate) fn flac_jobs(&self) -> Vec<flac::Job> {
+        let mut jobs = Vec::new();
+        for take in 1..=self.take_count() {
+            let t = &self.takes[take as usize - 1];
+            for name in self.take_expected(take) {
+                let mut parts: Vec<&tus::Upload> = self
+                    .uploads
+                    .iter()
+                    .filter(|u| u.take == take && u.participant == name)
+                    .collect();
+                parts.sort_by_key(|u| u.part);
+                let planned: Vec<realign::Part> = parts
+                    .iter()
+                    .map(|u| {
+                        let a = u.analysis();
+                        realign::Part {
+                            start_offset_ms: u.start_time - t.start_time,
+                            duration_ms: u.duration_ms,
+                            drift_ppm: a.drift_ppm,
+                            gaps: a.gaps,
+                        }
+                    })
+                    .collect();
+                // A Take without a stop (closed while recording is refused, but 0a Rooms may lack it) ends
+                // with its last audio.
+                let take_ms = t.stop_time.map(|stop| stop - t.start_time).unwrap_or_else(|| {
+                    planned
+                        .iter()
+                        .map(|p| p.start_offset_ms + p.duration_ms.unwrap_or(0.0))
+                        .fold(0.0, f64::max)
+                });
+                let pieces = realign::plan(&planned, take_ms);
+                let drift: Vec<_> = planned.iter().map(|p| p.drift_ppm).collect();
+                jobs.push(flac::Job {
+                    parts: parts.iter().map(|u| self.dir.join(u.file())).collect(),
+                    graph: realign::filter_graph(&drift, &pieces, take_ms),
+                    flac: self.flac_path(take, &name),
+                });
+            }
+        }
+        jobs
     }
 
     pub(crate) fn find(&mut self, name: &str) -> Option<&mut Participant> {

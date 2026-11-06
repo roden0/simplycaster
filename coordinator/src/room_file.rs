@@ -73,6 +73,10 @@ pub struct PartFile {
     pub drift_marks: Vec<DriftMark>,
     /// What the FLAC delivery corrects (ADR-0004); null when the marks are too few.
     pub drift_ppm: Option<f64>,
+    /// Audio missing (filled with silence in the FLAC) or, negative, extra between two drift marks
+    /// (ADR-0010). Left out when there are none, as in every file written before it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gaps: Vec<crate::realign::Gap>,
 }
 
 /// An Invitation of an open Room, with its secret.

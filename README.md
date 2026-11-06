@@ -11,7 +11,7 @@ Video-call recordings capture what the network delivered: dropouts, compression 
 - **Local recording.** Each browser records its microphone (Opus, in Ogg) and keeps it in the browser's own storage until it is safely on the server.
 - **Progressive, resumable upload.** Audio goes up while you record; if the connection drops, it resumes where it stopped.
 - **Synchronised Tracks.** The Coordinator gives every browser a reference clock, so the Tracks of a Take line up. Clock drift is corrected when converting.
-- **Delivery.** Download the original Ogg files, or 24-bit FLAC with drift correction, for a closed Room.
+- **Delivery.** Download the original Ogg files, or, for a closed Room, 24-bit FLAC: one file per Participant and Take, starting at the Sync tone and as long as the Take, with drift corrected and silence where a browser lost audio or reconnected. Drop them all at zero in your editor.
 
 The server (the *Coordinator*, one Rust binary) only coordinates connections, keeps the reference clock and stores the audio. It never processes audio during recording. Editing and mixing happen outside, in professional software.
 
