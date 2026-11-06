@@ -23,7 +23,7 @@ The full set of rules (module structure, errors and logs, concurrency, persisten
 - `main` is protected: nobody pushes to it directly, admins included, and it cannot be force-pushed or deleted. There is no `dev` branch: `main` is the integration branch.
 - Branch from `main` with a short prefix: `feat/`, `fix/`, `docs/`, `chore/`. Keep one change per pull request; each ADR-0006 step is its own pull request.
 - Small commits that make sense on their own, in English. A commit that only formats or moves code does not change behaviour and goes separately.
-- Open a pull request and fill in its checklist. **CI must pass** before merging: `make test`, generated protocol types committed, and the Docker image builds.
+- Open a pull request and fill in its checklist. **CI must pass** before merging: `make check` and the Docker image build.
 - Merging to `main` deploys the dev instance (https://dev.simplycaster.com) automatically. A change to recording, upload, sync or live conversation is tested there on real devices before the next step starts.
 - Fixing a bug starts with a test that fails.
 - Dependabot opens monthly update pull requests; they follow the same rules.
@@ -34,6 +34,7 @@ The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + 
 
 - `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. Create Rooms and Invitations in the backoffice, http://127.0.0.1:3000/backoffice/admin; it shows each Participant's link. On restart the Coordinator lists past Rooms again from each `room.json` in `coordinator/data/`, closed: they can be downloaded, not reopened. Converting a closed Room to FLAC (CU10) runs `ffmpeg`, so it must be on the `PATH`; the Docker image includes it.
 - `make test` runs the Rust tests and the client tests (`node --test`).
+- `make check` is what CI requires: `make test`, then `cargo fmt --check`, `cargo clippy -D warnings`, `tsc --noEmit` and no uncommitted changes in `client/src/protocol/`. Run it before every commit.
 - `make measure ROOM=coordinator/data/<room>_<date> TAKE=1` reports the sync error between the Tracks of a Take, from the Sync tone each Participant plays aloud and from cross-correlation of the audio, and the audio clock drift from the drift marks (needs `ffmpeg`).
 - `make types` regenerates `client/src/protocol/` from the Rust message types with `ts-rs`. Never edit those files by hand; commit them with the Rust change.
 

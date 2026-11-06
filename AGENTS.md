@@ -24,4 +24,4 @@
 
 ## Comandos
 
-`make run` (compila y arranca en http://127.0.0.1:3000), `make test`, `make types` (regenera `client/src/protocol/` desde Rust; no editar a mano). Detalle en [CONTRIBUTING.md](CONTRIBUTING.md).
+`make run` (compila y arranca en http://127.0.0.1:3000), `make test`, `make check` (lo que exige la CI antes de fusionar), `make types` (regenera `client/src/protocol/` desde Rust; no editar a mano). Detalle en [CONTRIBUTING.md](CONTRIBUTING.md).

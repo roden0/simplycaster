@@ -22,9 +22,7 @@ jobs:
         with:
           workspaces: coordinator
       - run: cd client && npm ci
-      - run: make test
-      - name: Generated protocol types are committed
-        run: git diff --exit-code client/src/protocol/
+      - run: make check
 
   # Coolify builds this same Dockerfile on every merge to main: catch a broken build before that.
   docker:
