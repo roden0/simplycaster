@@ -145,6 +145,17 @@ Esfuerzo: **S** (menos de medio día), **M** (uno o dos días), **L** (más, y c
 - `room.json` tiene un esquema único y tests con ficheros de ejemplo, incluidas las Salas de 0a. Los tokens de Invitación no entran nunca en él.
 - Se mantienen el `Mutex` de `std`, `eprintln!`, `Result<_, String>` y el cliente sin framework. Se revisan cuando se cumpla su disparador, no antes.
 
+## Estado (2026-11-06)
+
+Hechos todos los pasos del orden sugerido, cada uno en su commit con `make check` en verde. De los pasos de crecimiento: B9, B10 ([ADR-0009](0009-sesiones-con-cookie-firmada.md)), B11 ([ADR-0007](0007-salas-abiertas-sobreviven-a-un-reinicio.md)) y B13 ([ADR-0008](0008-cliente-dentro-del-binario.md)) también están hechos. B12 sigue sin disparador. Lo que salió al hacerlos:
+
+- A1 se reprodujo con un test: el PATCH cancelado dejaba la parte en 409 para siempre.
+- B4 se hizo llamando a los handlers directamente, sin `tower` como dependencia.
+- B11 encontró otro riesgo: al cargar, el `offset` de una parte sin terminar salía de `room.json`, que puede ir por detrás del fichero, y reanudar desde ahí duplicaba bytes. Ahora sale del tamaño real del fichero.
+- B8 encontró que un `localStorage` con `null` rompía la reanudación de Subidas al cargar.
+- B5: `durationMs` es `null` mientras una parte se graba; se rellena al completarse o al cerrar la Sala.
+- Las Salas guardadas antes de `1fa4fff` (Marcas de deriva sin `clockOffsetMs`) no cargan, ni antes ni ahora.
+
 ## Orden sugerido
 
 Cada paso es un commit independiente con `make test` (y, desde el paso 2, `make check`) en verde. Los que tocan grabación o subida se prueban en dev (Coolify despliega cada push a `main`) antes de pasar al siguiente.
