@@ -6,11 +6,11 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 use crate::protocol::{
-    BackofficeError, FlacState, InvitationView, ParticipantStatus, ParticipantView, Role, RoomView, ServerMessage,
-    TrackView,
+    BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role,
+    RoomView, ServerMessage, TrackView,
 };
 use crate::room_file::{ParticipantFile, RoomFile, TakeFile};
-use crate::{flac, now_ms, random_token, tus, utc_date};
+use crate::{MAX_SIGNAL_BYTES, flac, now_ms, random_token, tus, utc_date};
 
 /// A Room holds the Host and up to four Guests.
 pub(crate) const MAX_PARTICIPANTS: usize = 5;
@@ -174,6 +174,119 @@ impl Room {
     pub(crate) fn tone_hz(&self, name: &str) -> f64 {
         let i = self.participants.iter().position(|p| p.view.name == name).unwrap_or(0);
         1000.0 + 500.0 * i as f64
+    }
+
+    /// A new connection of a Participant: welcomes it and catches it up. A new connection with the same
+    /// Invitation replaces the old one (reconnect, CU7); the old one is told and closed, so it does not
+    /// linger without updates. Returns the connection id and the Participant's role.
+    pub(crate) fn connect(
+        &mut self,
+        name: &str,
+        tx: mpsc::UnboundedSender<ServerMessage>,
+        ice_servers: Vec<IceServer>,
+    ) -> (u64, Role) {
+        self.next_conn_id += 1;
+        let conn_id = self.next_conn_id;
+        let tone_hz = self.tone_hz(name);
+        let p = self.find(name).expect("the Invitation was just found in this Room");
+        if let Some((_, old)) = p.conn.replace((conn_id, tx.clone())) {
+            let _ = old.send(ServerMessage::Replaced);
+        }
+        p.view.status = ParticipantStatus::Connected;
+        p.view.mic_problem = None;
+        let role = p.view.role;
+        let _ = tx.send(ServerMessage::Welcome {
+            name: name.into(),
+            role,
+            tone_hz,
+            ice_servers,
+        });
+        // Catch up with the current Take (CU7): keep recording in a new part, or stop.
+        if let Some(t) = self.takes.last() {
+            let take = self.take_count();
+            let _ = tx.send(match t.stop_time {
+                None => ServerMessage::TakeStarted {
+                    take,
+                    start_time: t.start_time,
+                },
+                Some(stop_time) => ServerMessage::TakeStopped { take, stop_time },
+            });
+        }
+        if role == Role::Host {
+            for take in 1..=self.take_count() {
+                let _ = tx.send(self.take_tracks_message(take));
+            }
+        }
+        self.broadcast_roster();
+        (conn_id, role)
+    }
+
+    /// A connection ended. Only marks the Participant disconnected if no newer connection took over.
+    pub(crate) fn disconnect(&mut self, name: &str, conn_id: u64) {
+        let Some(p) = self.find(name) else { return };
+        if p.conn.as_ref().is_some_and(|(id, _)| *id == conn_id) {
+            p.conn = None;
+            p.view.status = ParticipantStatus::Disconnected;
+            self.broadcast_roster();
+        }
+    }
+
+    /// What a message from a connected Participant does. `Ping` is answered by the socket itself.
+    pub(crate) fn on_message(&mut self, name: &str, role: Role, msg: ClientMessage) {
+        match msg {
+            ClientMessage::Ping { .. } => {}
+            ClientMessage::ClockOffset { offset_ms, rtt_ms } => {
+                let Some(p) = self.find(name) else { return };
+                p.view.clock_offset_ms = Some(offset_ms);
+                p.view.clock_rtt_ms = Some(rtt_ms);
+                self.broadcast_roster();
+            }
+            ClientMessage::MicStatus { problem } => {
+                let Some(p) = self.find(name) else { return };
+                p.view.mic_problem = problem;
+                self.broadcast_roster();
+            }
+            ClientMessage::DriftMark {
+                take,
+                samples,
+                coordinator_time,
+                clock_offset_ms,
+                clock_rtt_ms,
+            } => {
+                // Marks belong to the part being recorded: the latest one of this Participant.
+                if let Some(u) = self
+                    .uploads
+                    .iter_mut()
+                    .rev()
+                    .find(|u| u.take == take && u.participant == name)
+                {
+                    u.drift_marks.push(tus::DriftMark {
+                        samples,
+                        coordinator_time,
+                        clock_offset_ms,
+                        clock_rtt_ms,
+                    });
+                }
+            }
+            ClientMessage::Signal { to, data } => {
+                if data.len() > MAX_SIGNAL_BYTES {
+                    eprintln!("{} {name}: ignoring a signal of {} bytes", self.id, data.len());
+                    return;
+                }
+                let peer = self.participants.iter().find(|p| p.view.name == to);
+                if let Some((_, tx)) = peer.and_then(|p| p.conn.as_ref()) {
+                    let _ = tx.send(ServerMessage::Signal {
+                        from: name.into(),
+                        data,
+                    });
+                }
+            }
+            ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {
+                eprintln!("{} {name}: only the Host can record or stop", self.id);
+            }
+            ClientMessage::Record => self.start_take(),
+            ClientMessage::Stop => self.stop_take(),
+        }
     }
 
     pub(crate) fn broadcast_roster(&self) {
@@ -392,6 +505,112 @@ pub(crate) fn track_stem(room: &str, take: u32, participant: &str, part: u32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    type Inbox = mpsc::UnboundedReceiver<ServerMessage>;
+
+    /// A Room with a Host and Ana, both connected; their inboxes are already drained.
+    fn connected_room() -> (Room, Inbox, Inbox) {
+        let dir = std::env::temp_dir().join(random_token());
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut room = Room::new("r_2026-11-06".into(), "r".into(), dir);
+        room.invite("host", Role::Host).unwrap();
+        room.invite("ana", Role::Guest).unwrap();
+        let (host_tx, mut host) = mpsc::unbounded_channel();
+        let (ana_tx, mut ana) = mpsc::unbounded_channel();
+        room.connect("host", host_tx, vec![]);
+        room.connect("ana", ana_tx, vec![]);
+        drain(&mut host);
+        drain(&mut ana);
+        (room, host, ana)
+    }
+
+    fn drain(inbox: &mut Inbox) -> Vec<ServerMessage> {
+        std::iter::from_fn(|| inbox.try_recv().ok()).collect()
+    }
+
+    fn status(room: &Room, name: &str) -> ParticipantStatus {
+        room.participants
+            .iter()
+            .find(|p| p.view.name == name)
+            .unwrap()
+            .view
+            .status
+    }
+
+    #[test]
+    fn only_the_host_records_and_stops() {
+        let (mut room, _host, mut ana) = connected_room();
+        room.on_message("ana", Role::Guest, ClientMessage::Record);
+        assert!(!room.recording && room.take_count() == 0);
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        assert!(room.recording);
+        assert!(
+            drain(&mut ana)
+                .iter()
+                .any(|m| matches!(m, ServerMessage::TakeStarted { take: 1, .. }))
+        );
+        room.on_message("ana", Role::Guest, ClientMessage::Stop);
+        assert!(room.recording);
+        room.on_message("host", Role::Host, ClientMessage::Stop);
+        assert!(!room.recording);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn reconnecting_replaces_the_old_connection() {
+        let (mut room, _host, mut old) = connected_room();
+        let old_id = room.next_conn_id;
+        let (tx, mut new) = mpsc::unbounded_channel();
+        let (new_id, role) = room.connect("ana", tx, vec![]);
+        assert_eq!(role, Role::Guest);
+        assert!(drain(&mut old).iter().any(|m| matches!(m, ServerMessage::Replaced)));
+        assert!(matches!(drain(&mut new).first(), Some(ServerMessage::Welcome { .. })));
+        // The old socket ends after the new one took over: Ana stays connected.
+        room.disconnect("ana", old_id);
+        assert_eq!(status(&room, "ana"), ParticipantStatus::Connected);
+        room.disconnect("ana", new_id);
+        assert_eq!(status(&room, "ana"), ParticipantStatus::Disconnected);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn a_reconnection_mid_take_catches_up_with_it() {
+        let (mut room, _host, _ana) = connected_room();
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        let (tx, mut inbox) = mpsc::unbounded_channel();
+        room.connect("ana", tx, vec![]);
+        assert!(
+            drain(&mut inbox)
+                .iter()
+                .any(|m| matches!(m, ServerMessage::TakeStarted { take: 1, .. }))
+        );
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn a_drift_mark_goes_to_the_latest_part() {
+        let (mut room, _host, _ana) = connected_room();
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        for part in [1, 2] {
+            let saved = format!(
+                r#"{{"participant":"ana","part":{part},"file":"p{part}.ogg","complete":false,"bytes":0,
+                "startTime":0,"sampleRate":48000}}"#
+            );
+            room.uploads
+                .push(tus::Upload::from_file(1, serde_json::from_str(&saved).unwrap()));
+        }
+        let mark = ClientMessage::DriftMark {
+            take: 1,
+            samples: 480_000,
+            coordinator_time: 1e12,
+            clock_offset_ms: 0.0,
+            clock_rtt_ms: 40.0,
+        };
+        room.on_message("ana", Role::Guest, mark);
+        let marks: Vec<_> = room.uploads.iter().map(|u| u.drift_marks.len()).collect();
+        assert_eq!(marks, [0, 1]);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
 
     #[test]
     fn names_safe_for_files() {
