@@ -14,7 +14,8 @@ use axum::{
 };
 use tokio::sync::mpsc;
 
-use crate::{AppState, WsParams};
+use crate::AppState;
+use crate::ws::WsParams;
 
 /// Host only: one received Track.
 pub async fn track(
