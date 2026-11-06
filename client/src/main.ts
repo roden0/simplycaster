@@ -3,6 +3,7 @@ import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
 import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
 import { createLive, type Live } from "./live.ts";
+import { micProblem, parsePendingUploads, partPlan, type PendingUploads } from "./session.ts";
 import type { MicProblem } from "./protocol/MicProblem.ts";
 import type { ClientMessage } from "./protocol/ClientMessage.ts";
 import type { ServerMessage } from "./protocol/ServerMessage.ts";
@@ -237,10 +238,8 @@ function startTrack() {
     takeStatus.textContent = t("notReadyToRecord", { take });
     return;
   }
-  let localStart = startTime - clockOffsetMs;
   // Joining after T (reconnect, CU7): record a new part from now on, without the Sync tone.
-  const late = localStart < localNow() + LATE_START_LEAD_MS;
-  if (late) localStart = localNow() + LATE_START_LEAD_MS;
+  const { localStartMs: localStart, late } = partPlan(startTime, clockOffsetMs, localNow(), LATE_START_LEAD_MS);
   // Unique local name per part; the Coordinator names the files it stores.
   const fileName = `t${String(take).padStart(2, "0")}_${myName}_${Date.now()}.ogg`;
   recorder.start({
@@ -293,17 +292,7 @@ let sentMicProblem: MicProblem | null | undefined;
 
 /** Shows the worst current microphone problem here and tells the Coordinator, so the Host sees it too. */
 function refreshMicProblem() {
-  const problem: MicProblem | null = !micState
-    ? null
-    : micState.ended
-      ? "ended"
-      : micState.muted
-        ? "muted"
-        : document.hidden
-          ? "hidden"
-          : micState.silent
-            ? "silent"
-            : null;
+  const problem = micProblem(micState, document.hidden);
   micWarning.textContent = problem ? t(MIC_PROBLEM_WARNING[problem]) : "";
   if (problem === sentMicProblem) return;
   sentMicProblem = problem;
@@ -328,13 +317,11 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Uploads not yet confirmed by the Coordinator, so a reloaded page can finish them (CU7).
-type PendingUploads = Record<string, { uploadUrl: string; take: number; invite: string }>;
-
 function pendingUploads(): PendingUploads {
   try {
-    return JSON.parse(localStorage.getItem(PENDING_UPLOADS_KEY) ?? "{}");
+    return parsePendingUploads(localStorage.getItem(PENDING_UPLOADS_KEY));
   } catch {
-    return {};
+    return {}; // storage blocked: nothing to resume
   }
 }
 
