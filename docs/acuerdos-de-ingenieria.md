@@ -53,7 +53,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 - Los nombres de fichero se construyen en el Coordinador a partir de nombres validados (`valid_name`); nunca se toma una ruta del cliente. Solo se sirven ficheros listados en la Sala. Así es hoy.
 - Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes. **[pendiente: A4, B6]**
-- Secretos de 128 bits aleatorios. Sin `BACKOFFICE_TOKEN`, el Coordinador solo arranca en loopback (falla cerrado). **[pendiente: A3]**
+- Secretos de 128 bits aleatorios. Sin `BACKOFFICE_TOKEN`, el Coordinador solo arranca en loopback (falla cerrado).
 - Cada handler del backoffice comprueba el secreto antes de nada. Con JWT, la comprobación pasa a un extractor y los secretos salen de las URL. **[pendiente: B10]**
 - Las herramientas externas (FFmpeg) se lanzan con argumentos, nunca a través de una shell.
 

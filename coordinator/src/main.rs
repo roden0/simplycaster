@@ -691,6 +691,19 @@ fn track_stem(room: &str, take: u32, participant: &str, part: u32) -> String {
     }
 }
 
+/// The backoffice secret. Without `BACKOFFICE_TOKEN` it is the guessable `admin`, allowed only on loopback:
+/// listening anywhere else, the Coordinator refuses to start rather than expose the backoffice (ADR-0006 A3).
+fn backoffice_token(token: Option<String>, ip: IpAddr) -> Result<String, String> {
+    // Empty counts as unset: docker-compose passes `BACKOFFICE_TOKEN=` when .env leaves it blank.
+    match token.filter(|t| !t.is_empty()) {
+        Some(t) => Ok(t),
+        None if ip.is_loopback() => Ok("admin".into()),
+        None => Err(format!(
+            "BACKOFFICE_TOKEN is required when listening on {ip}; generate one with: openssl rand -hex 16"
+        )),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // shortcut: static files are read from disk next to the repo; embed them in the binary before distributing.
@@ -703,8 +716,15 @@ async fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("data"));
     std::fs::create_dir_all(&data).expect("cannot create the data folder");
-    // Without the variable the backoffice link is the guessable /backoffice/admin: fine locally only.
-    let backoffice_token = std::env::var("BACKOFFICE_TOKEN").unwrap_or_else(|_| "admin".into());
+
+    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(3000);
+    // Loopback by default; the Docker image sets BIND=0.0.0.0 behind the platform's HTTPS proxy.
+    let ip: IpAddr = std::env::var("BIND")
+        .ok()
+        .and_then(|b| b.parse().ok())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let backoffice_token =
+        backoffice_token(std::env::var("BACKOFFICE_TOKEN").ok(), ip).unwrap_or_else(|e| panic!("{e}"));
     let secret = backoffice_token != "admin";
 
     let turn = live::Turn::start()
@@ -746,12 +766,6 @@ async fn main() {
         ))
         .with_state(state);
 
-    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(3000);
-    // Loopback by default; the Docker image sets BIND=0.0.0.0 behind the platform's HTTPS proxy.
-    let ip: IpAddr = std::env::var("BIND")
-        .ok()
-        .and_then(|b| b.parse().ok())
-        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
     let addr = SocketAddr::new(ip, port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!(
@@ -789,6 +803,17 @@ mod tests {
         for bad in ["", "Ana", "a b", "../x", "a_b", &"x".repeat(41)] {
             assert!(!valid_name(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_backoffice_fails_closed_off_loopback() {
+        let local: IpAddr = "127.0.0.1".parse().unwrap();
+        let any: IpAddr = "0.0.0.0".parse().unwrap();
+        assert_eq!(backoffice_token(None, local).unwrap(), "admin");
+        assert_eq!(backoffice_token(None, "::1".parse().unwrap()).unwrap(), "admin");
+        assert!(backoffice_token(None, any).is_err());
+        assert!(backoffice_token(Some(String::new()), any).is_err());
+        assert_eq!(backoffice_token(Some("s3cret".into()), any).unwrap(), "s3cret");
     }
 
     #[test]

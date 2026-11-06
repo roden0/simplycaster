@@ -26,7 +26,7 @@ Esfuerzo: **S** (menos de medio día), **M** (uno o dos días), **L** (más, y c
 - Problema: sin la variable, el token es `admin` (`main.rs:697`), y la imagen Docker escucha en `0.0.0.0` (`Dockerfile:22`). Un despliegue al que se le olvide la variable expone `/backoffice/admin` a internet; solo lo avisa un `println` (`main.rs:754`).
 - Propuesta: fallar cerrado. Si la dirección de escucha no es de loopback y no hay `BACKOFFICE_TOKEN`, el Coordinador no arranca. En local todo sigue igual.
 - Riesgo: una función pura `backoffice_token(env, ip) -> Result<String, String>`, con su test.
-- Actualización (2026-11-06): el `docker-compose.yml` publicado ya exige `BACKOFFICE_TOKEN`, pero la imagen sola (Coolify, `docker run`) sigue arrancando sin él. El paso sigue haciendo falta.
+- Actualización (2026-11-06): el `docker-compose.yml` publicado ya exige `BACKOFFICE_TOKEN`, pero la imagen sola (Coolify, `docker run`) sigue arrancando sin él. El paso sigue haciendo falta. Hecho después el mismo día con `backoffice_token`: una variable vacía cuenta como ausente.
 
 **A4. Mensajes del WebSocket de hasta 64 MiB, y se registran enteros (S)**
 - Problema: el WebSocket usa el límite por defecto de tungstenite (64 MiB). El tamaño de las señales se comprueba después de deserializar (`main.rs:644`), y un mensaje mal formado se escribe entero en el log (`main.rs:598`).
