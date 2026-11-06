@@ -40,7 +40,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 - Orden de cerrojos: primero el registro de Salas y después la Sala; nunca el registro con una Sala tomada.
 - `std::sync::Mutex`, que nunca se mantiene a través de un `await`; el compilador lo garantiza en los handlers de axum.
 - Con un cerrojo tomado: nada de E/S que crezca con la Sala (leer audio, recorrer ficheros) ni operaciones que puedan hacer pánico por una entrada externa. Escribir un JSON de unos KB se acepta. **[pendiente: B5]**
-- Un estado de "en curso" (`busy`, `Converting`) se libera con un guard o en una tarea que no se pueda cancelar, nunca solo en la línea siguiente a un `await`. *Por qué*: axum cancela el handler si el cliente se desconecta. **[pendiente: A1]**
+- Un estado de "en curso" (`busy`, `Converting`) se libera con un guard o en una tarea que no se pueda cancelar, nunca solo en la línea siguiente a un `await`. *Por qué*: axum cancela el handler si el cliente se desconecta.
 - Para trabajo bloqueante largo (zips, FFmpeg): `spawn_blocking` o un proceso aparte, como ya se hace.
 
 ## Persistencia
