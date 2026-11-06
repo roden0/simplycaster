@@ -23,6 +23,9 @@ const TUS_VERSION: &str = "1.0.0";
 const MIN_DRIFT_SPAN_MS: f64 = 60_000.0;
 /// Beyond this the marks are wrong, not the clock: real audio clocks drift tens of ppm.
 const MAX_DRIFT_PPM: f64 = 1000.0;
+/// Parts per Participant and Take. Each reconnection starts one, so a client reconnecting in a loop,
+/// or a leaked Invitation, would otherwise fill the disk. Real Takes have a handful.
+const MAX_PARTS: u32 = 50;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -228,6 +231,12 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         .iter()
         .filter(|u| u.take == take && u.participant == name)
         .count() as u32;
+    // Not limited to the Take being recorded: a POST right after the stop is legitimate. 403 and not 409,
+    // which tus-js-client would retry.
+    if part > MAX_PARTS {
+        eprintln!("{} {name}: refusing part {part} of Take {take}", room.id);
+        return tus(StatusCode::FORBIDDEN);
+    }
     let id = track_stem(&room.id, take, &name, part);
     if let Err(e) = std::fs::File::create(room.dir.join(format!("{id}.ogg"))) {
         eprintln!("cannot create {id}.ogg: {e}");
@@ -573,6 +582,18 @@ mod tests {
         assert_eq!(done.status(), StatusCode::NO_CONTENT);
         let saved = crate::room_file::RoomFile::read(&dir).unwrap();
         assert_eq!(saved.takes[0].tracks[0].duration_ms, Some(10_000.0));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn parts_per_take_are_limited() {
+        let (state, dir, ana, bea) = studio();
+        for _ in 0..MAX_PARTS {
+            new_part(&state, &ana).await;
+        }
+        let one_more = create(Path(1), State(state.clone()), headers(&ana, &NEW_PART)).await;
+        assert_eq!(one_more.status(), StatusCode::FORBIDDEN);
+        new_part(&state, &bea).await; // per Participant
         std::fs::remove_dir_all(dir).unwrap();
     }
 
