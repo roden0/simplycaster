@@ -58,6 +58,25 @@ struct Participant {
     conn: Option<(u64, mpsc::UnboundedSender<ServerMessage>)>,
 }
 
+impl Participant {
+    /// A disconnected Participant with a fresh Invitation token.
+    fn new(name: &str, role: Role) -> Self {
+        Participant {
+            token: random_token(),
+            view: ParticipantView {
+                name: name.into(),
+                role,
+                status: ParticipantStatus::Disconnected,
+                clock_offset_ms: None,
+                clock_rtt_ms: None,
+                syncing: false,
+                mic_problem: None,
+            },
+            conn: None,
+        }
+    }
+}
+
 pub struct Room {
     /// `<name>_<date>`: the folder name and the prefix of every file in it.
     id: String,
@@ -69,8 +88,6 @@ pub struct Room {
     flac: FlacState,
     participants: Vec<Participant>,
     next_conn_id: u64,
-    /// Number of the last Take started (0 = none yet).
-    take: u32,
     recording: bool,
     /// Index = Take number - 1.
     takes: Vec<Take>,
@@ -96,7 +113,6 @@ impl Room {
             flac: FlacState::None,
             participants: Vec::new(),
             next_conn_id: 0,
-            take: 0,
             recording: false,
             takes: Vec::new(),
             dir,
@@ -118,19 +134,7 @@ impl Room {
         if self.participants.len() >= MAX_PARTICIPANTS {
             return Err(BackofficeError::RoomFull);
         }
-        self.participants.push(Participant {
-            token: random_token(),
-            view: ParticipantView {
-                name: name.into(),
-                role,
-                status: ParticipantStatus::Disconnected,
-                clock_offset_ms: None,
-                clock_rtt_ms: None,
-                syncing: false,
-                mic_problem: None,
-            },
-            conn: None,
-        });
+        self.participants.push(Participant::new(name, role));
         self.broadcast_roster();
         Ok(())
     }
@@ -160,7 +164,6 @@ impl Room {
             room.uploads
                 .extend(t.tracks.into_iter().map(|p| tus::Upload::from_saved(take, p)));
         }
-        room.take = room.takes.len() as u32;
         // FLACs are renamed into place only when complete, so all present means converted.
         if !room.uploads.is_empty() && room.uploads.iter().all(|u| room.flac_path(u).is_file()) {
             room.flac = FlacState::Ready;
@@ -181,21 +184,14 @@ impl Room {
             }
         }
         for p in people {
-            room.participants.push(Participant {
-                token: random_token(),
-                view: ParticipantView {
-                    name: p.name,
-                    role: p.role,
-                    status: ParticipantStatus::Disconnected,
-                    clock_offset_ms: None,
-                    clock_rtt_ms: None,
-                    syncing: false,
-                    mic_problem: None,
-                },
-                conn: None,
-            });
+            room.participants.push(Participant::new(&p.name, p.role));
         }
         Ok(room)
+    }
+
+    /// Number of the last Take started (0 = none yet).
+    fn take_count(&self) -> u32 {
+        self.takes.len() as u32
     }
 
     fn flac_path(&self, u: &tus::Upload) -> PathBuf {
@@ -243,7 +239,7 @@ impl Room {
     /// Participants with audio of any Take not yet uploaded.
     fn pending(&self) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
-        for n in (1..=self.take).flat_map(|t| self.take_pending(t)) {
+        for n in (1..=self.take_count()).flat_map(|t| self.take_pending(t)) {
             if !names.contains(&n) {
                 names.push(n);
             }
@@ -277,7 +273,11 @@ impl Room {
 
     /// A Participant is syncing while a stopped Take still has audio of theirs pending upload.
     fn refresh_syncing(&mut self) {
-        let stopped = if self.recording { self.take - 1 } else { self.take };
+        let stopped = if self.recording {
+            self.take_count() - 1
+        } else {
+            self.take_count()
+        };
         let pending: Vec<String> = (1..=stopped).flat_map(|t| self.take_pending(t)).collect();
         for p in &mut self.participants {
             p.view.syncing = pending.contains(&p.view.name);
@@ -289,14 +289,13 @@ impl Room {
             return;
         }
         self.recording = true;
-        self.take += 1;
         let start_time = now_ms() + START_LEAD_MS;
         self.takes.push(Take {
             start_time,
             stop_time: None,
         });
         self.broadcast(ServerMessage::TakeStarted {
-            take: self.take,
+            take: self.take_count(),
             start_time,
         });
     }
@@ -306,7 +305,7 @@ impl Room {
             return;
         }
         self.recording = false;
-        let (take, stop_time) = (self.take, now_ms() + STOP_LEAD_MS);
+        let (take, stop_time) = (self.take_count(), now_ms() + STOP_LEAD_MS);
         self.takes[take as usize - 1].stop_time = Some(stop_time);
         self.broadcast(ServerMessage::TakeStopped { take, stop_time });
         self.broadcast_take_tracks(take);
@@ -338,7 +337,7 @@ impl Room {
             created_at: self.created_at,
             closed: self.closed,
             recording: self.recording,
-            takes: self.take,
+            takes: self.take_count(),
             pending: self.pending(),
             flac: self.flac,
             invitations: self
@@ -357,7 +356,7 @@ impl Room {
     /// Writes `room.json` next to the Tracks: what an editor needs to align them.
     // shortcut: rewritten whole on every change; fine for a handful of Takes.
     fn save_metadata(&self) {
-        let takes: Vec<_> = (1..=self.take)
+        let takes: Vec<_> = (1..=self.take_count())
             .map(|take| {
                 let t = &self.takes[take as usize - 1];
                 let parts: Vec<_> = self
@@ -574,7 +573,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
         let role = p.view.role;
         // Catch up with the current Take (CU7): keep recording in a new part, or stop.
         if let Some(t) = room.takes.last() {
-            let take = room.take;
+            let take = room.take_count();
             let _ = tx.send(match t.stop_time {
                 None => ServerMessage::TakeStarted {
                     take,
@@ -584,7 +583,7 @@ async fn handle_socket(socket: WebSocket, name: String, shared: SharedRoom, ice_
             });
         }
         if role == Role::Host {
-            for take in 1..=room.take {
+            for take in 1..=room.take_count() {
                 let _ = tx.send(room.take_tracks_message(take));
             }
         }
@@ -854,7 +853,7 @@ mod tests {
         std::fs::write(dir.join("room.json.tmp"), b"{\"room\":").unwrap();
         let past = Room::load(dir.clone()).unwrap();
         assert!(past.closed);
-        assert_eq!((past.name.as_str(), past.take), ("r", 1));
+        assert_eq!((past.name.as_str(), past.take_count()), ("r", 1));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

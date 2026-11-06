@@ -26,7 +26,7 @@ pub async fn track(
     // Only files listed for the Take are served, so the URL cannot reach anything else on disk.
     let path = {
         let room = shared.lock().unwrap();
-        if take == 0 || take > room.take {
+        if take == 0 || take > room.take_count() {
             return Err(StatusCode::NOT_FOUND);
         }
         let tr = room.take_tracks(take).into_iter().find(|tr| tr.file == file);
@@ -56,7 +56,7 @@ pub async fn take_zip(
 ) -> Result<Response, StatusCode> {
     let shared = state.host_room(&params.invite).ok_or(StatusCode::FORBIDDEN)?;
     let room = shared.lock().unwrap();
-    if take == 0 || take > room.take {
+    if take == 0 || take > room.take_count() {
         return Err(StatusCode::NOT_FOUND);
     }
     let entries = room
