@@ -1,2 +1,9 @@
 docs/research/
 docs/prototipo-0.md
+# Local runs and test browsers
+chrome/
+*.log
+data/
+backups/
+# Real configuration with secrets; .env.example is the template
+.env

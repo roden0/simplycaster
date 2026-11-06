@@ -4,3 +4,8 @@ docs
 client/dist
 coordinator/target
 coordinator/data
+.env
+data
+backups
+chrome
+*.log

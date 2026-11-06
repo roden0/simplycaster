@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /coordinator
+    schedule: { interval: monthly }
+    groups: { cargo: { update-types: [minor, patch] } }
+  - package-ecosystem: npm
+    directory: /client
+    schedule: { interval: monthly }
+    groups: { npm: { update-types: [minor, patch] } }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: monthly }
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: monthly }
