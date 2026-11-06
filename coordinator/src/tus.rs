@@ -15,6 +15,7 @@ use axum::{
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::room_file::PartFile;
 use crate::{AppState, MAX_TRACK_BYTES, SharedRoom, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
@@ -23,7 +24,7 @@ const MIN_DRIFT_SPAN_MS: f64 = 60_000.0;
 /// Beyond this the marks are wrong, not the clock: real audio clocks drift tens of ppm.
 const MAX_DRIFT_PPM: f64 = 1000.0;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DriftMark {
     pub samples: u64,
@@ -60,28 +61,8 @@ pub struct Upload {
     busy: bool,
 }
 
-/// A Track part as `room.json` records it, to list past Rooms after a restart.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavedPart {
-    participant: String,
-    part: u32,
-    file: String,
-    complete: bool,
-    bytes: u64,
-    start_time: f64,
-    sample_rate: u32,
-    output_latency_ms: Option<f64>,
-    input_latency_ms: Option<f64>,
-    calibrated_round_trip_ms: Option<f64>,
-    clock_offset_ms: Option<f64>,
-    clock_rtt_ms: Option<f64>,
-    #[serde(default)]
-    drift_marks: Vec<DriftMark>,
-}
-
 impl Upload {
-    pub fn from_saved(take: u32, p: SavedPart) -> Upload {
+    pub fn from_file(take: u32, p: PartFile) -> Upload {
         Upload {
             id: p.file.trim_end_matches(".ogg").to_string(),
             take,
@@ -98,6 +79,29 @@ impl Upload {
             clock_rtt_ms: p.clock_rtt_ms,
             length: p.complete.then_some(p.bytes),
             busy: false,
+        }
+    }
+
+    /// The part as `room.json` records it; `t` is its Take's T, the Sync tone.
+    pub fn to_file(&self, t: f64, tone_hz: f64, duration_ms: Option<f64>) -> PartFile {
+        PartFile {
+            participant: self.participant.clone(),
+            part: self.part,
+            file: self.file(),
+            complete: self.is_complete(),
+            bytes: self.offset,
+            duration_ms,
+            start_time: self.start_time,
+            start_offset_ms: self.start_time - t,
+            sample_rate: self.sample_rate,
+            tone_hz,
+            output_latency_ms: self.output_latency_ms,
+            input_latency_ms: self.input_latency_ms,
+            calibrated_round_trip_ms: self.calibrated_round_trip_ms,
+            clock_offset_ms: self.clock_offset_ms,
+            clock_rtt_ms: self.clock_rtt_ms,
+            drift_marks: self.drift_marks.clone(),
+            drift_ppm: self.drift_ppm(),
         }
     }
 
@@ -392,7 +396,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        Upload::from_saved(1, serde_json::from_str(&saved).unwrap())
+        Upload::from_file(1, serde_json::from_str(&saved).unwrap())
     }
 
     #[test]

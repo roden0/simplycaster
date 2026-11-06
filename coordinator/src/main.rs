@@ -3,6 +3,7 @@ mod download;
 mod flac;
 mod live;
 mod protocol;
+mod room_file;
 mod tus;
 
 use std::{
@@ -31,6 +32,8 @@ use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
+
+use room_file::{ParticipantFile, RoomFile, TakeFile};
 
 use protocol::{
     BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role,
@@ -142,8 +145,7 @@ impl Room {
     /// A past Room from its `room.json`, closed: its Invitations were never saved, and a Room
     /// is not reopened (ADR-0002). Rooms of iteration 0a lack name, date and participants.
     fn load(dir: PathBuf) -> Result<Room, String> {
-        let json = std::fs::read(dir.join("room.json")).map_err(|e| e.to_string())?;
-        let saved: SavedRoom = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        let saved = RoomFile::read(&dir)?;
         let id = dir.file_name().unwrap().to_string_lossy().into_owned();
         let mut room = Room::new(id.clone(), saved.room.unwrap_or(id), dir);
         room.closed = true;
@@ -162,7 +164,7 @@ impl Room {
                 stop_time: t.stop_time,
             });
             room.uploads
-                .extend(t.tracks.into_iter().map(|p| tus::Upload::from_saved(take, p)));
+                .extend(t.tracks.into_iter().map(|p| tus::Upload::from_file(take, p)));
         }
         // FLACs are renamed into place only when complete, so all present means converted.
         if !room.uploads.is_empty() && room.uploads.iter().all(|u| room.flac_path(u).is_file()) {
@@ -177,7 +179,7 @@ impl Room {
                 } else {
                     Role::Guest
                 };
-                people.push(SavedParticipant {
+                people.push(ParticipantFile {
                     name: u.participant.clone(),
                     role,
                 });
@@ -356,55 +358,40 @@ impl Room {
     /// Writes `room.json` next to the Tracks: what an editor needs to align them.
     // shortcut: rewritten whole on every change; fine for a handful of Takes.
     fn save_metadata(&self) {
-        let takes: Vec<_> = (1..=self.take_count())
+        let takes = (1..=self.take_count())
             .map(|take| {
                 let t = &self.takes[take as usize - 1];
-                let parts: Vec<_> = self
+                let tracks = self
                     .uploads
                     .iter()
                     .filter(|u| u.take == take)
-                    .map(|u| {
-                        serde_json::json!({
-                            "participant": u.participant,
-                            "part": u.part,
-                            "file": u.file(),
-                            "complete": u.is_complete(),
-                            "bytes": u.offset,
-                            // Audio actually received; shorter than the Take if the browser stopped early.
-                            "durationMs": u.duration_ms(&self.dir),
-                            "startTime": u.start_time,
-                            "startOffsetMs": u.start_time - t.start_time,
-                            "sampleRate": u.sample_rate,
-                            "toneHz": self.tone_hz(&u.participant),
-                            "outputLatencyMs": u.output_latency_ms,
-                            "inputLatencyMs": u.input_latency_ms,
-                            "calibratedRoundTripMs": u.calibrated_round_trip_ms,
-                            "clockOffsetMs": u.clock_offset_ms,
-                            "clockRttMs": u.clock_rtt_ms,
-                            "driftMarks": u.drift_marks,
-                            // What the FLAC delivery corrects (ADR-0004); null when the marks are too few.
-                            "driftPpm": u.drift_ppm(),
-                        })
-                    })
+                    .map(|u| u.to_file(t.start_time, self.tone_hz(&u.participant), u.duration_ms(&self.dir)))
                     .collect();
-                serde_json::json!({ "take": take, "startTime": t.start_time, "stopTime": t.stop_time, "tracks": parts })
+                TakeFile {
+                    take,
+                    start_time: t.start_time,
+                    stop_time: t.stop_time,
+                    tracks,
+                }
             })
             .collect();
-        let meta = serde_json::json!({
-            "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
-            "room": self.name,
-            "created": self.created,
-            "createdAt": self.created_at,
-            "closed": self.closed,
-            "participants": self.participants.iter().map(|p| serde_json::json!({ "name": p.view.name, "role": p.view.role })).collect::<Vec<_>>(),
-            "takes": takes,
-        });
-        // Written aside and renamed, so a process killed mid-write never leaves a truncated room.json.
-        // shortcut: no fsync, so a power cut can still lose the last write; fsync file and folder if that matters.
-        let tmp = self.dir.join("room.json.tmp");
-        let written = std::fs::write(&tmp, serde_json::to_vec_pretty(&meta).unwrap())
-            .and_then(|()| std::fs::rename(&tmp, self.dir.join("room.json")));
-        if let Err(e) = written {
+        let participants = self
+            .participants
+            .iter()
+            .map(|p| ParticipantFile {
+                name: p.view.name.clone(),
+                role: p.view.role,
+            })
+            .collect();
+        let file = RoomFile::new(
+            &self.name,
+            &self.created,
+            self.created_at,
+            self.closed,
+            participants,
+            takes,
+        );
+        if let Err(e) = file.write(&self.dir) {
             eprintln!("{}: cannot write room.json: {e}", self.id);
         }
     }
@@ -418,31 +405,6 @@ impl Room {
             let _ = tx.send(msg.clone());
         }
     }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SavedRoom {
-    room: Option<String>,
-    created: Option<String>,
-    created_at: Option<f64>,
-    participants: Option<Vec<SavedParticipant>>,
-    takes: Vec<SavedTake>,
-}
-
-#[derive(Deserialize)]
-struct SavedParticipant {
-    name: String,
-    role: Role,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SavedTake {
-    take: u32,
-    start_time: f64,
-    stop_time: Option<f64>,
-    tracks: Vec<tus::SavedPart>,
 }
 
 /// Every Room folder in `data` with a `room.json`, oldest first.
