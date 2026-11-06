@@ -42,6 +42,10 @@ _Avoid_: Sesión, grabación / Session, recording
 El audio de un único Participante en una Toma, grabado con calidad en su propio navegador y subido progresivamente al Coordinador.
 _Avoid_: Grabación, stream / Recording, stream
 
+**Parte** (en: **Part**):
+Trozo continuo de una Pista. La parte 1 empieza en el Tono de sincronía; si el navegador se recarga o se reconecta durante la Toma (CU7), lo que graba después es una parte nueva (2, 3…), con su desfase respecto al Tono y sus propias Marcas de deriva, en su propio fichero (`_p2`, `_p3`…).
+_Avoid_: Segmento, trozo, chunk / Segment, chunk
+
 **Tono de sincronía** (en: **Sync tone**):
 Marca audible insertada en todas las Pistas de una Toma en el mismo instante según el reloj del Coordinador, para alinear su inicio al editar. Alinea el inicio con un margen de unos 15 ms, pero no la duración: de eso se ocupa la corrección de deriva (ADR-0004).
 _Avoid_: Clap, beep, marca de sincronización / Clap, beep, marker
