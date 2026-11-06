@@ -4,6 +4,7 @@ mod download;
 mod flac;
 mod live;
 mod protocol;
+mod realign;
 mod room;
 mod room_file;
 mod session;

@@ -19,10 +19,6 @@ use crate::room_file::PartFile;
 use crate::{AppState, MAX_TRACK_BYTES, SharedRoom, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
-/// Drift marks must span this long before their slope is trusted to correct a part (ADR-0004).
-const MIN_DRIFT_SPAN_MS: f64 = 60_000.0;
-/// Beyond this the marks are wrong, not the clock: real audio clocks drift tens of ppm.
-const MAX_DRIFT_PPM: f64 = 1000.0;
 /// Parts per Participant and Take. Each reconnection starts one, so a client reconnecting in a loop,
 /// or a leaked Invitation, would otherwise fill the disk. Real Takes have a handful.
 const MAX_PARTS: u32 = 50;
@@ -90,6 +86,7 @@ impl Upload {
 
     /// The part as `room.json` records it; `t` is its Take's T, the Sync tone.
     pub fn to_file(&self, t: f64, tone_hz: f64) -> PartFile {
+        let analysis = self.analysis();
         PartFile {
             participant: self.participant.clone(),
             part: self.part,
@@ -107,27 +104,14 @@ impl Upload {
             clock_offset_ms: self.clock_offset_ms,
             clock_rtt_ms: self.clock_rtt_ms,
             drift_marks: self.drift_marks.clone(),
-            drift_ppm: self.drift_ppm(),
+            drift_ppm: analysis.drift_ppm,
+            gaps: analysis.gaps,
         }
     }
 
-    /// How fast this part's audio clock ran against the Coordinator clock, in ppm, from the
-    /// least-squares slope of its drift marks; `None` when there are too few to trust.
-    pub fn drift_ppm(&self) -> Option<f64> {
-        let m = &self.drift_marks;
-        if m.len() < 3 || m.last()?.coordinator_time - m[0].coordinator_time < MIN_DRIFT_SPAN_MS {
-            return None;
-        }
-        let n = m.len() as f64;
-        let (t0, s0) = (m[0].coordinator_time, m[0].samples as f64);
-        let xs: Vec<f64> = m.iter().map(|d| d.coordinator_time - t0).collect();
-        let ys: Vec<f64> = m.iter().map(|d| d.samples as f64 - s0).collect();
-        let (mx, my) = (xs.iter().sum::<f64>() / n, ys.iter().sum::<f64>() / n);
-        let sxy: f64 = xs.iter().zip(&ys).map(|(x, y)| (x - mx) * (y - my)).sum();
-        let sxx: f64 = xs.iter().map(|x| (x - mx).powi(2)).sum();
-        let samples_per_s = sxy / sxx * 1000.0;
-        let ppm = (samples_per_s / f64::from(self.sample_rate) - 1.0) * 1e6;
-        (ppm.abs() < MAX_DRIFT_PPM).then_some(ppm)
+    /// Drift and gaps of this part, from its drift marks (ADR-0010).
+    pub fn analysis(&self) -> crate::realign::Analysis {
+        crate::realign::analyse(&self.drift_marks, self.sample_rate)
     }
 
     /// Length of the audio received so far (ms), from the Ogg file itself. Shorter than its
@@ -441,7 +425,7 @@ mod tests {
                 (t, (i as f64 * 10.0 * 48_000.0 * 1.00003 + jitter) as u64)
             })
             .collect();
-        let ppm = part(&marks).drift_ppm().unwrap();
+        let ppm = part(&marks).analysis().drift_ppm.unwrap();
         assert!((ppm - 30.0).abs() < 0.5, "{ppm}");
     }
 
@@ -664,11 +648,15 @@ mod tests {
     #[test]
     fn too_few_or_absurd_marks_are_not_trusted() {
         assert_eq!(
-            part(&[(0.0, 0), (10_000.0, 480_000), (20_000.0, 960_000)]).drift_ppm(),
+            part(&[(0.0, 0), (10_000.0, 480_000), (20_000.0, 960_000)])
+                .analysis()
+                .drift_ppm,
             None
         );
         assert_eq!(
-            part(&[(0.0, 0), (60_000.0, 2_900_000), (120_000.0, 5_800_000)]).drift_ppm(),
+            part(&[(0.0, 0), (60_000.0, 2_900_000), (120_000.0, 5_800_000)])
+                .analysis()
+                .drift_ppm,
             None
         );
     }

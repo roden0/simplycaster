@@ -51,7 +51,7 @@ Marca audible insertada en todas las Pistas de una Toma en el mismo instante seg
 _Avoid_: Clap, beep, marca de sincronización / Clap, beep, marker
 
 **Marca de deriva** (en: **Drift mark**):
-Anotación que cada navegador manda cada 10 s mientras graba: cuántas muestras lleva su Pista en ese instante del reloj del Coordinador. Su pendiente mide la deriva del reloj de audio de esa Pista, y con ella se corrige al convertir a FLAC.
+Anotación que cada navegador manda cada 2 s mientras graba: cuántas muestras lleva su Pista en ese instante del reloj del Coordinador. Su pendiente mide la deriva del reloj de audio de esa Pista, y con ella se corrige al convertir a FLAC; un salto entre dos marcas señala audio perdido, que se rellena con silencio (ADR-0010).
 _Avoid_: Timestamp, checkpoint
 
 **Sincronizando** (en: **Syncing**):

@@ -21,7 +21,8 @@ const CLOCK_RESYNC_MS = 30_000;
  * queue on the way. Older samples go stale as the clocks drift apart (~30 ppm seen: ~2 ms here).
  */
 const CLOCK_WINDOW_MS = 65_000;
-const DRIFT_MARK_MS = 10_000;
+// Every 2 s, so a loss of audio is placed within ±1 s when realigning for the FLAC delivery (ADR-0010).
+const DRIFT_MARK_MS = 2_000;
 const RECONNECT_MS = 2000;
 /** When joining a Take after T, the new part starts this long after now. */
 const LATE_START_LEAD_MS = 300;
@@ -114,7 +115,7 @@ async function connect(invite: string) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws${sessionQuery}`);
   // Only while open: send() throws on a socket still connecting. What is skipped is resent anyway:
-  // the next drift mark in 10 s, the mic status on open, the live offers with the roster.
+  // the next drift mark in 2 s, the mic status on open, the live offers with the roster.
   send = (msg) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   };
