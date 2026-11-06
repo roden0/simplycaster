@@ -1,6 +1,6 @@
 # SimplyCaster: one image with the Coordinator binary and the client it serves.
 
-FROM node:24-slim AS client
+FROM node:25-slim AS client
 WORKDIR /src/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
