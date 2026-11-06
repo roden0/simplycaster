@@ -46,7 +46,19 @@ The `backup` service makes a daily, encrypted, deduplicated [restic](https://res
 
 - **Default:** into `./backups` on the same server. Easy, but it does not survive losing the server.
 - **Off-site (recommended):** set `RESTIC_REPOSITORY` in `.env` to any [restic repository](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html), such as S3, Backblaze B2 or a REST server, plus its credentials. `.env.example` has examples.
+- **Anything rclone reaches** (pCloud, Google Drive, OneDrive, Dropbox…): restic calls rclone itself with `RESTIC_REPOSITORY=rclone:<remote>:<path>`. The `backup` image has no rclone, so lend it the host's in a `docker-compose.override.yml`, which Compose loads on its own when present:
+
+  ```yaml
+  services:
+    backup:
+      environment:
+        RCLONE_CONFIG: /rclone/rclone.conf
+      volumes:
+        - /usr/bin/rclone:/usr/local/bin/rclone:ro      # rclone is a single static binary
+        - ~/.config/rclone/rclone.conf:/rclone/rclone.conf:ro
+  ```
 - **Your own tool:** remove the `backup` service and back up `./data` however you like.
+- **Without this compose file** (Coolify, which does not back up volumes, or any other platform): [`deploy/host-backup/`](deploy/host-backup/) has the same restic backup as a script and a systemd timer for the host, with the same repository choices and an optional Telegram alert when it fails.
 
 Keep `RESTIC_PASSWORD` somewhere other than the server: without it, the backups cannot be restored.
 

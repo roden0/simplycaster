@@ -1,0 +1,13 @@
+[Unit]
+Description=SimplyCaster backup with restic
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-simplycaster.sh
+# systemd sets no HOME, and restic needs a cache folder: /var/cache/simplycaster-backup.
+CacheDirectory=simplycaster-backup
+Environment=RESTIC_CACHE_DIR=%C/simplycaster-backup
+Nice=10
+IOSchedulingClass=idle

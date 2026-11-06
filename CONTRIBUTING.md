@@ -67,7 +67,7 @@ Report vulnerabilities privately, as explained in [SECURITY.md](SECURITY.md). Ne
 
 ## Deploying on Coolify
 
-Our dev instance runs on Coolify and builds the root `Dockerfile` on every merge to `main`. A production instance on Coolify should use the *Docker Image* build pack with a pinned `ghcr.io/roden0/simplycaster:X.Y.Z` instead. Coolify does not back up volumes: copy `/data` yourself, for example with the `backup` service from `docker-compose.yml`. For the Dockerfile build:
+Our dev instance runs on Coolify and builds the root `Dockerfile` on every merge to `main`. A production instance on Coolify should use the *Docker Image* build pack with a pinned `ghcr.io/roden0/simplycaster:X.Y.Z` instead. Coolify does not back up volumes: copy `/data` yourself, for example with the host script and timer in `deploy/host-backup/`. For the Dockerfile build:
 
 - **Build pack**: Dockerfile; base directory `/`, Dockerfile location `/Dockerfile`.
 - **Ports exposes**: `3000`. The platform proxy terminates HTTPS, which browsers require for recording; WebSockets pass through it.

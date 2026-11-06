@@ -7,3 +7,5 @@ data/
 backups/
 # Real configuration with secrets; .env.example is the template
 .env
+docker-compose.override.yml
+rclone.conf

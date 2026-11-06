@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily SimplyCaster backup
+
+[Timer]
+# Change the time to avoid other backups on the server; the time zone follows summer time.
+OnCalendar=*-*-* 03:00:00 Europe/Madrid
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
