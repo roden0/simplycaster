@@ -288,16 +288,19 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
     };
 
     let limit = length.unwrap_or(MAX_TRACK_BYTES);
+    let writing = Writing {
+        room: shared.clone(),
+        id: id.clone(),
+        path: path.clone(),
+        offset,
+    };
     let result = append(&path, body, limit - offset).await;
-    // Whatever reached the disk counts, even on error: the client resumes from there.
-    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(offset);
+    drop(writing); // before taking the lock again: its Drop takes it
 
     let mut room = shared.lock().unwrap();
     let Some(u) = room.uploads.iter_mut().find(|u| u.id == id) else {
         return tus(StatusCode::NOT_FOUND); // uploads are never removed; kept for safety
     };
-    u.busy = false;
-    u.offset = size;
     let offset = u.offset;
     if let Err(e) = result {
         eprintln!("{id}: PATCH failed at offset {offset}: {e}");
@@ -311,6 +314,28 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         room.save_metadata();
     }
     tus_with(StatusCode::NO_CONTENT, [("Upload-Offset", offset.to_string())])
+}
+
+/// Marks an upload busy while a PATCH writes it. Dropping it records what reached the disk and frees
+/// the upload, also when axum drops the handler because the client disconnected mid-body (ADR-0006 A1).
+struct Writing {
+    room: SharedRoom,
+    id: String,
+    path: std::path::PathBuf,
+    offset: u64,
+}
+
+impl Drop for Writing {
+    fn drop(&mut self) {
+        // Whatever reached the disk counts, even on error: the client resumes from there.
+        let size = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(self.offset);
+        // No unwrap: a panic inside Drop while unwinding would abort the whole Coordinator.
+        let Ok(mut room) = self.room.lock() else { return };
+        if let Some(u) = room.uploads.iter_mut().find(|u| u.id == self.id) {
+            u.busy = false;
+            u.offset = size;
+        }
+    }
 }
 
 /// Appends the request body to the file, at most `max` bytes.
@@ -398,6 +423,65 @@ mod tests {
         std::fs::write(&path, ogg).unwrap();
         assert_eq!(ogg_opus_duration_ms(&path), Some(10_000.0));
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_patch_cancelled_mid_body_does_not_lock_the_upload() {
+        use crate::{Coordinator, Role, Room};
+        use std::sync::{Arc, Mutex};
+
+        let dir = std::env::temp_dir().join(crate::random_token());
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut room = Room::new("r_2026-11-06".into(), "r".into(), dir.clone());
+        room.invite("ana", Role::Guest).unwrap();
+        room.start_take();
+        let token = room.participants[0].token.clone();
+        let state: AppState = Arc::new(Coordinator {
+            rooms: Mutex::new(vec![Arc::new(Mutex::new(room))]),
+            data: dir.clone(),
+            backoffice_token: "admin".into(),
+            turn: None,
+        });
+        let headers = |pairs: &[(&'static str, &str)]| {
+            let mut h = HeaderMap::new();
+            h.insert("X-Invite", token.parse().unwrap());
+            for (k, v) in pairs {
+                h.insert(*k, v.parse().unwrap());
+            }
+            h
+        };
+
+        let created = create(
+            Path(1),
+            State(state.clone()),
+            headers(&[
+                ("Upload-Defer-Length", "1"),
+                ("X-Track-Start", "0"),
+                ("X-Sample-Rate", "48000"),
+            ]),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let id = created.headers()["Location"]
+            .to_str()
+            .unwrap()
+            .trim_start_matches("/uploads/")
+            .to_string();
+        let patch_headers = headers(&[
+            ("Content-Type", "application/offset+octet-stream"),
+            ("Upload-Offset", "0"),
+        ]);
+
+        // The connection drops mid-body: the handler future is dropped while it waits for bytes.
+        let stalled = Body::from_stream(futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>());
+        let cut = std::time::Duration::from_millis(50);
+        let first = patch(Path(id.clone()), State(state.clone()), patch_headers.clone(), stalled);
+        assert!(tokio::time::timeout(cut, first).await.is_err());
+
+        // The client resumes from offset 0, and must not get 409 forever.
+        let resumed = patch(Path(id), State(state), patch_headers, Body::from("OggS")).await;
+        assert_eq!(resumed.status(), StatusCode::NO_CONTENT);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
