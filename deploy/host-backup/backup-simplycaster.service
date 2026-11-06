@@ -1,0 +1,10 @@
+[Unit]
+Description=SimplyCaster backup with restic
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-simplycaster.sh
+Nice=10
+IOSchedulingClass=idle
