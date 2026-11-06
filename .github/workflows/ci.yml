@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: coordinator
+      - run: cd client && npm ci
+      - run: make test
+      - name: Generated protocol types are committed
+        run: git diff --exit-code client/src/protocol/
+
+  # Coolify builds this same Dockerfile on every merge to main: catch a broken build before that.
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

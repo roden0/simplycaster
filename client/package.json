@@ -1,6 +1,7 @@
 {
   "name": "simplycaster-client",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",

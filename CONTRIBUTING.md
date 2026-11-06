@@ -4,7 +4,7 @@ SimplyCaster is a self-hosted, local-first distributed audio recording studio. S
 
 ## Language
 
-- **Code, file names, UI and commit messages are in English.**
+- **Code, file names, UI and commit messages are in English**, and so are the public documents (README, CONTRIBUTING, SECURITY). The team talks in Spanish, and the ADRs and internal documents are in Spanish.
 - Domain vocabulary comes from [CONTEXT.md](CONTEXT.md). It is bilingual: use the English term (`en:`) in code and UI, never the terms listed under _Avoid_. If you need a new domain term, add it to the glossary first.
 - No user-visible string is hard-coded: every text goes through the message catalog (`en` is the base locale) so translations can be added later.
 
@@ -15,6 +15,18 @@ Architecture decisions live in [docs/adr/](docs/adr/). Read them before changing
 ## Principle
 
 Pragmatism first: the simplest solution that works ("the Russian pencil, not the NASA pen"). Avoid abstractions, options and dependencies nobody asked for.
+
+The full set of rules (module structure, errors and logs, concurrency, persistence, trust boundaries, tests, dependencies) is in the [engineering agreements](docs/acuerdos-de-ingenieria.md), in Spanish. Items marked **[pendiente]** are not met yet; [ADR-0006](docs/adr/0006-revision-de-codigo-y-mejoras.md) lists the steps that fix them.
+
+## Workflow
+
+- `main` is protected: nobody pushes to it directly, admins included, and it cannot be force-pushed or deleted. There is no `dev` branch: `main` is the integration branch.
+- Branch from `main` with a short prefix: `feat/`, `fix/`, `docs/`, `chore/`. Keep one change per pull request; each ADR-0006 step is its own pull request.
+- Small commits that make sense on their own, in English. A commit that only formats or moves code does not change behaviour and goes separately.
+- Open a pull request and fill in its checklist. **CI must pass** before merging: `make test`, generated protocol types committed, and the Docker image builds.
+- Merging to `main` deploys the dev instance (https://dev.simplycaster.com) automatically. A change to recording, upload, sync or live conversation is tested there on real devices before the next step starts.
+- Fixing a bug starts with a test that fails.
+- Dependabot opens monthly update pull requests; they follow the same rules.
 
 ## Development
 
@@ -27,9 +39,34 @@ The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + 
 
 Recording APIs (microphone, WebCodecs, OPFS) only work in a secure context: use `localhost` or HTTPS when testing from other devices.
 
-## Deploying a test instance (Coolify)
+## Versioning and releases
 
-The root `Dockerfile` builds one image with the Coordinator and the client. On Coolify:
+SimplyCaster follows [SemVer](https://semver.org). The single source of the version is `version` in `coordinator/Cargo.toml`. While we are on 0.x, a minor version may break compatibility (the `room.json` format, the protocol, the configuration); the release notes say so.
+
+To cut a release:
+
+1. Open a pull request that sets the new `version` in `coordinator/Cargo.toml` (and `Cargo.lock`, via `cargo build`), and merge it.
+2. Tag that commit of `main` and push the tag:
+   ```sh
+   git switch main && git pull
+   git tag -a v0.2.0 -m "v0.2.0"
+   git push origin v0.2.0
+   ```
+3. The *Release* workflow checks that the tag matches `Cargo.toml`, publishes `ghcr.io/roden0/simplycaster:0.2.0` (also `0.2` and `latest`), and creates the GitHub Release with notes generated from the merged pull requests. Edit the notes to mention anything that breaks.
+
+Production never follows `main`: it runs a pinned image version and is upgraded by hand after reading the notes.
+
+## Security
+
+Report vulnerabilities privately, as explained in [SECURITY.md](SECURITY.md). Never commit secrets: real configuration goes in `.env`, which git ignores; `.env.example` is the template.
+
+## Self-hosting
+
+[README.md](README.md) explains how to run an instance with `docker-compose.yml`: Caddy for HTTPS, and restic for backups of `/data`.
+
+## Deploying on Coolify
+
+Our dev instance runs on Coolify and builds the root `Dockerfile` on every merge to `main`. A production instance on Coolify should use the *Docker Image* build pack with a pinned `ghcr.io/roden0/simplycaster:X.Y.Z` instead. Coolify does not back up volumes: copy `/data` yourself, for example with the `backup` service from `docker-compose.yml`. For the Dockerfile build:
 
 - **Build pack**: Dockerfile; base directory `/`, Dockerfile location `/Dockerfile`.
 - **Ports exposes**: `3000`. The platform proxy terminates HTTPS, which browsers require for recording; WebSockets pass through it.

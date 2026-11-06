@@ -9,7 +9,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 ## Idiomas y vocabulario
 
-- La conversación, la documentación y los ADR van en español. El código, los nombres de fichero, la interfaz y los mensajes de commit, en inglés.
+- La conversación, la documentación interna y los ADR van en español. Los documentos públicos (README, CONTRIBUTING, SECURITY), en inglés. El código, los nombres de fichero, la interfaz y los mensajes de commit, en inglés.
 - Los términos del dominio salen de [CONTEXT.md](../CONTEXT.md): en español al hablar, su `en:` en el código. Nunca los de _Avoid_. Un término nuevo se añade primero al glosario. **[pendiente: A8]** falta "Parte" (en: Part).
 - Los nombres que ya viajan por la red o están guardados en los navegadores (`X-Invite`, `?invite=`) no se renombran; el código nuevo usa el término del glosario. *Por qué*: renombrarlos rompe las Subidas pendientes.
 
