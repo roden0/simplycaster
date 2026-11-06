@@ -9,7 +9,7 @@ use crate::protocol::{
     BackofficeError, ClientMessage, FlacState, IceServer, InvitationView, ParticipantStatus, ParticipantView, Role,
     RoomView, ServerMessage, TrackView,
 };
-use crate::room_file::{ParticipantFile, RoomFile, TakeFile};
+use crate::room_file::{self, InvitationFile, ParticipantFile, RoomFile, TakeFile};
 use crate::{MAX_SIGNAL_BYTES, flac, now_ms, random_token, tus, utc_date};
 
 /// A Room holds the Host and up to four Guests.
@@ -104,17 +104,39 @@ impl Room {
             return Err(BackofficeError::RoomFull);
         }
         self.participants.push(Participant::new(name, role));
+        self.save_invitations();
         self.broadcast_roster();
         Ok(())
     }
 
-    /// A past Room from its `room.json`, closed: its Invitations were never saved, and a Room
-    /// is not reopened (ADR-0002). Rooms of iteration 0a lack name, date and participants.
+    fn save_invitations(&self) {
+        let list: Vec<_> = self
+            .participants
+            .iter()
+            .map(|p| InvitationFile {
+                name: p.view.name.clone(),
+                role: p.view.role,
+                token: p.token.clone(),
+            })
+            .collect();
+        if let Err(e) = room_file::write_invitations(&self.dir, &list) {
+            eprintln!("{}: cannot write the Invitations: {e}", self.id);
+        }
+    }
+
+    /// A Room from its folder after a restart. Open if it was open and its Invitations were saved
+    /// (ADR-0007): same links, and a Take being recorded goes on. Otherwise closed, as a closed Room is
+    /// never reopened (ADR-0002). Rooms of iteration 0a lack name, date and participants.
     pub(crate) fn load(dir: PathBuf) -> Result<Room, String> {
         let saved = RoomFile::read(&dir)?;
+        let invitations = if saved.closed {
+            None
+        } else {
+            room_file::read_invitations(&dir)
+        };
         let id = dir.file_name().unwrap().to_string_lossy().into_owned();
         let mut room = Room::new(id.clone(), saved.room.unwrap_or(id), dir);
-        room.closed = true;
+        room.closed = invitations.is_none();
         room.created = saved
             .created
             .or_else(|| saved.takes.first().map(|t| utc_date(t.start_time)))
@@ -135,6 +157,22 @@ impl Room {
         // FLACs are renamed into place only when complete, so all present means converted.
         if !room.uploads.is_empty() && room.uploads.iter().all(|u| room.flac_path(u).is_file()) {
             room.flac = FlacState::Ready;
+        }
+        // room.json may lag behind the disk: resume each unfinished part from what the file holds,
+        // or a client resuming from the stale offset would write its bytes twice.
+        for u in room.uploads.iter_mut().filter(|u| !u.is_complete()) {
+            if let Ok(m) = std::fs::metadata(room.dir.join(u.file())) {
+                u.offset = m.len();
+            }
+        }
+        if let Some(list) = invitations {
+            room.recording = room.takes.last().is_some_and(|t| t.stop_time.is_none());
+            for i in list {
+                let mut p = Participant::new(&i.name, i.role);
+                p.token = i.token;
+                room.participants.push(p);
+            }
+            return Ok(room);
         }
         let mut people = saved.participants.unwrap_or_default();
         for u in &room.uploads {
@@ -405,6 +443,9 @@ impl Room {
             return Err(BackofficeError::Recording);
         }
         self.closed = true;
+        if let Err(e) = room_file::remove_invitations(&self.dir) {
+            eprintln!("{}: cannot remove the Invitations: {e}", self.id);
+        }
         // Parts left incomplete stop growing now: read what they hold, once.
         for i in 0..self.uploads.len() {
             if !self.uploads[i].is_complete() {
@@ -691,7 +732,9 @@ mod tests {
 
     #[test]
     fn invitations_are_unique_and_limited() {
-        let mut room = Room::new("r_2026-11-05".into(), "r".into(), PathBuf::from("."));
+        let dir = std::env::temp_dir().join(random_token());
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut room = Room::new("r_2026-11-05".into(), "r".into(), dir.clone());
         room.invite("host", Role::Host).unwrap();
         assert_eq!(room.invite("host", Role::Guest), Err(BackofficeError::NameTaken));
         for n in ["a", "b", "c", "d"] {
@@ -700,6 +743,47 @@ mod tests {
         assert_eq!(room.invite("e", Role::Guest), Err(BackofficeError::RoomFull));
         let tokens: Vec<_> = room.participants.iter().map(|p| &p.token).collect();
         assert!(tokens.iter().all(|t| t.len() == 32) && tokens[0] != tokens[1]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_open_room_survives_a_restart() {
+        let (mut room, _host, _ana) = connected_room();
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        let saved = r#"{"participant":"ana","part":1,"file":"t01_ana.ogg","complete":false,"bytes":3,"startTime":0,"sampleRate":48000}"#;
+        room.uploads
+            .push(tus::Upload::from_file(1, serde_json::from_str(saved).unwrap()));
+        room.save_metadata();
+        // More bytes reached the disk after room.json was last written.
+        std::fs::write(room.dir.join("t01_ana.ogg"), b"OggS-audio").unwrap();
+
+        let back = Room::load(room.dir.clone()).unwrap();
+        assert!(!back.closed && back.recording);
+        let tokens = |r: &Room| {
+            r.participants
+                .iter()
+                .map(|p| (p.view.name.clone(), p.token.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(tokens(&back), tokens(&room));
+        assert_eq!(back.uploads[0].offset, 10);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn closing_removes_the_invitation_secrets() {
+        let (mut room, _host, _ana) = connected_room();
+        assert!(room.dir.join("invitations.json").is_file());
+        room.close().unwrap();
+        assert!(!room.dir.join("invitations.json").exists());
+        let back = Room::load(room.dir.clone()).unwrap();
+        assert!(back.closed);
+        assert!(
+            back.participants
+                .iter()
+                .all(|p| room.participants.iter().all(|q| q.token != p.token))
+        );
+        std::fs::remove_dir_all(&room.dir).unwrap();
     }
 
     #[test]

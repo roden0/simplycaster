@@ -32,7 +32,7 @@ The full set of rules (module structure, errors and logs, concurrency, persisten
 
 The repository has two parts, `coordinator/` (Rust) and `client/` (TypeScript + Vite), driven by a root `Makefile`. You need Rust (stable) and Node.js 24+.
 
-- `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. Create Rooms and Invitations in the backoffice, http://127.0.0.1:3000/backoffice/admin; it shows each Participant's link. On restart the Coordinator lists past Rooms again from each `room.json` in `coordinator/data/`, closed: they can be downloaded, not reopened. Converting a closed Room to FLAC (CU10) runs `ffmpeg`, so it must be on the `PATH`; the Docker image includes it.
+- `make run` builds everything and starts the Coordinator on http://127.0.0.1:3000. Create Rooms and Invitations in the backoffice, http://127.0.0.1:3000/backoffice/admin; it shows each Participant's link. On restart the Coordinator loads every Room in `coordinator/data/` again: open ones stay open with the same links, and a Take being recorded goes on (ADR-0007); closed ones can be downloaded, not reopened. Converting a closed Room to FLAC (CU10) runs `ffmpeg`, so it must be on the `PATH`; the Docker image includes it.
 - `make test` runs the Rust tests and the client tests (`node --test`).
 - `make check` is what CI requires: `make test`, then `cargo fmt --check`, `cargo clippy -D warnings`, `tsc --noEmit` and no uncommitted changes in `client/src/protocol/`. Run it before every commit.
 - `make measure ROOM=coordinator/data/<room>_<date> TAKE=1` reports the sync error between the Tracks of a Take, from the Sync tone each Participant plays aloud and from cross-correlation of the audio, and the audio clock drift from the drift marks (needs `ffmpeg`).

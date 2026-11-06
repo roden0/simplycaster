@@ -58,8 +58,6 @@ type SharedRoom = Arc<Mutex<Room>>;
 
 pub struct Coordinator {
     /// Lock order: this list, then a Room; never the list while holding a Room.
-    // shortcut: a restart brings Rooms back from room.json closed, since Invitations are not saved;
-    // save them too if open Rooms must survive a redeploy.
     rooms: Mutex<Vec<SharedRoom>>,
     data: PathBuf,
     backoffice_token: String,

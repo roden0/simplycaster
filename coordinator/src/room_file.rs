@@ -1,6 +1,7 @@
 //! `room.json`, the only durable record of a Room (ADR-0002, ADR-0004): one schema to write it and to
 //! read it back, so the two cannot drift apart. Fields that Rooms of iteration 0a lack are optional.
-//! Invitation tokens never go here: this file is inside every download.
+//! Invitation tokens never go here: this file is inside every download. They go in `invitations.json`,
+//! which no download includes, only while the Room is open, so an open Room survives a restart (ADR-0007).
 
 use std::path::Path;
 
@@ -10,6 +11,7 @@ use crate::protocol::Role;
 use crate::tus::DriftMark;
 
 const FILE: &str = "room.json";
+const INVITATIONS: &str = "invitations.json";
 const NOTE: &str = "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.";
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -73,6 +75,47 @@ pub struct PartFile {
     pub drift_ppm: Option<f64>,
 }
 
+/// An Invitation of an open Room, with its secret.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct InvitationFile {
+    pub name: String,
+    pub role: Role,
+    pub token: String,
+}
+
+/// The Invitations of an open Room, in Invitation order (it sets each Sync tone); `None` when the
+/// file is missing, as in closed Rooms and Rooms saved before ADR-0007.
+pub fn read_invitations(dir: &Path) -> Option<Vec<InvitationFile>> {
+    let json = std::fs::read(dir.join(INVITATIONS)).ok()?;
+    serde_json::from_slice(&json)
+        .inspect_err(|e| eprintln!("{}: unreadable {INVITATIONS}: {e}", dir.display()))
+        .ok()
+}
+
+pub fn write_invitations(dir: &Path, invitations: &[InvitationFile]) -> std::io::Result<()> {
+    write_atomic(
+        dir,
+        INVITATIONS,
+        &serde_json::to_vec_pretty(invitations).expect("always serializes"),
+    )
+}
+
+/// Closing expires every Invitation: their secrets leave the disk.
+pub fn remove_invitations(dir: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(dir.join(INVITATIONS)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// Written aside and renamed, so a process killed mid-write never leaves a truncated file.
+// shortcut: no fsync, so a power cut can still lose the last write; fsync file and folder if that matters.
+fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = dir.join(format!("{name}.tmp"));
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, dir.join(name))
+}
+
 fn note() -> String {
     NOTE.into()
 }
@@ -102,14 +145,11 @@ impl RoomFile {
         serde_json::from_slice(&json).map_err(|e| e.to_string())
     }
 
-    /// Written aside and renamed, so a process killed mid-write never leaves a truncated room.json.
-    // shortcut: no fsync, so a power cut can still lose the last write; fsync file and folder if that matters.
     pub fn write(&self, dir: &Path) -> std::io::Result<()> {
-        let tmp = dir.join("room.json.tmp");
-        std::fs::write(
-            &tmp,
-            serde_json::to_vec_pretty(self).expect("room.json always serializes"),
-        )?;
-        std::fs::rename(&tmp, dir.join(FILE))
+        write_atomic(
+            dir,
+            FILE,
+            &serde_json::to_vec_pretty(self).expect("room.json always serializes"),
+        )
     }
 }
