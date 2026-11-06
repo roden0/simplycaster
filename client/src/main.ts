@@ -85,7 +85,11 @@ if (!invite) {
 function connect(invite: string) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws?invite=${encodeURIComponent(invite)}`);
-  send = (msg) => ws.send(JSON.stringify(msg));
+  // Only while open: send() throws on a socket still connecting. What is skipped is resent anyway:
+  // the next drift mark in 10 s, the mic status on open, the live offers with the roster.
+  send = (msg) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  };
   let opened = false;
   /** Pongs still expected from the current burst. */
   let burstLeft = 0;
