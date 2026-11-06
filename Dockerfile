@@ -7,7 +7,7 @@ RUN npm ci
 COPY client/ ./
 RUN npm run build
 
-FROM rust:1.94-slim-trixie AS coordinator
+FROM rust:1.98-slim-trixie AS coordinator
 WORKDIR /src/coordinator
 COPY coordinator/ ./
 RUN cargo build --release --locked
