@@ -1,6 +1,15 @@
-// Message catalog: `en` is the base locale. Add other locales with the same keys.
+// Message catalog: `en` is the base locale. Add another locale as a `Catalog` (TypeScript then
+// reports any missing key) and list it in `catalogs`.
+import type { ParticipantStatus } from "./protocol/ParticipantStatus.ts";
+import type { Role } from "./protocol/Role.ts";
+
 const en = {
   appTitle: "SimplyCaster",
+  // Composed lines: templates, so another language can change the order and the separator.
+  listSeparator: " · ",
+  rosterEntry: "{name} · {role} · {details}",
+  micProblemEntry: "⚠ {problem}",
+  roomSummary: "{state} · {takes}",
   buildInfo: "build {build} UTC",
   noInvitation: "Open the personal link from your invitation to join the Room.",
   invalidInvitation: "This invitation is not valid, or its Room has been closed.",
@@ -40,7 +49,7 @@ const en = {
   statusSyncing: "syncing",
   clockOffset: "clock offset {offset} ms (round trip {rtt} ms)",
   clockPending: "measuring clock…",
-  micError: "Could not open the microphone: {error}",
+  micError: "Could not open the microphone. Allow it for this site and reload the page. ({error})",
   record: "Record",
   stop: "Stop",
   takeStarting: "Take {take} starts in a moment…",
@@ -48,7 +57,7 @@ const en = {
   takeStopped: "Take {take} stopped",
   notReadyToRecord: "Take {take} is being recorded: enable your microphone to join it.",
   takeRejoined: "Recording take {take} (continuing after reconnecting)",
-  recordingError: "Recording failed: {error}",
+  recordingError: "Recording failed. Reload the page to join again. ({error})",
   trackSyncing: "Sending the rest of your Track for take {take}…",
   trackUploaded: "Your Track for take {take} was sent.",
   takeHeading: "Take {take}",
@@ -58,8 +67,10 @@ const en = {
   trackPartEntry: "{file} ({mb} MB, starts {seconds} s after the Sync tone)",
   downloadAllZip: "Download all (zip)",
   backofficeTitle: "SimplyCaster backoffice",
-  backofficeNoLink: "Open the backoffice with its secret link.",
-  backofficeInvalidLink: "This backoffice link is not valid.",
+  backofficeToken: "Backoffice token",
+  signIn: "Sign in",
+  signOut: "Sign out",
+  wrongBackofficeToken: "That token is not right.",
   newRoom: "New Room",
   roomName: "Room name",
   hostName: "Host name",
@@ -92,14 +103,45 @@ const en = {
   requestFailed: "Request failed ({status}).",
   errorInvalidName: "Use only lowercase letters, digits and dashes (up to 40).",
   errorNameTaken: "That name is already in this Room.",
-  errorRoomFull: "A Room holds at most 5 Participants.",
+  errorRoomFull: "A Room holds at most {max} Participants.",
   errorRecording: "A Take is being recorded: stop it before closing the Room.",
   errorClosed: "This Room is closed.",
   errorOpen: "Close the Room first.",
 };
 
 export type MessageKey = keyof typeof en;
+export type Catalog = Record<MessageKey, string>;
+
+const catalogs: Record<string, Catalog> = { en };
+
+/** The first of the browser's languages with a catalog, by full tag or by language; `en` otherwise. */
+export function pickLocale(languages: readonly string[], available: readonly string[]): string {
+  for (const tag of languages) {
+    const lower = tag.toLowerCase();
+    const match = available.find((a) => a === lower) ?? available.find((a) => a === lower.split("-")[0]);
+    if (match) return match;
+  }
+  return "en";
+}
+
+const locale = pickLocale(globalThis.navigator?.languages ?? [], Object.keys(catalogs));
+
+/** Sets the page language, for screen readers and hyphenation. */
+export function applyLocale() {
+  document.documentElement.lang = locale;
+}
 
 export function t(key: MessageKey, params: Record<string, string | number> = {}): string {
-  return en[key].replace(/\{(\w+)\}/g, (_, p) => String(params[p] ?? `{${p}}`));
+  return catalogs[locale][key].replace(/\{(\w+)\}/g, (_, p) => String(params[p] ?? `{${p}}`));
 }
+
+/** Joins the parts of a composed line with the locale's separator. */
+export function list(parts: string[]): string {
+  return parts.join(t("listSeparator"));
+}
+
+export const ROLE_LABEL: Record<Role, MessageKey> = { host: "roleHost", guest: "roleGuest" };
+export const STATUS_LABEL: Record<ParticipantStatus, MessageKey> = {
+  connected: "statusConnected",
+  disconnected: "statusDisconnected",
+};

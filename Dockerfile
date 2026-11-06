@@ -1,4 +1,4 @@
-# SimplyCaster: one image with the Coordinator binary and the client it serves.
+# SimplyCaster: one image with the Coordinator binary, which carries the client it serves.
 
 FROM node:25-slim AS client
 WORKDIR /src/client
@@ -10,6 +10,8 @@ RUN npm run build
 FROM rust:1.98-slim-trixie AS coordinator
 WORKDIR /src/coordinator
 COPY coordinator/ ./
+# Embedded in the binary at build time (ADR-0008).
+COPY --from=client /src/client/dist /src/client/dist
 RUN cargo build --release --locked
 
 FROM debian:trixie-slim
@@ -18,10 +20,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=coordinator /src/coordinator/target/release/coordinator /usr/local/bin/coordinator
-COPY --from=client /src/client/dist /app/client
 ENV BIND=0.0.0.0 \
     PORT=3000 \
-    CLIENT_DIST=/app/client \
     DATA_DIR=/data
 # Mount persistent storage here, or Tracks are lost on every redeploy.
 VOLUME /data

@@ -8,22 +8,45 @@ use std::sync::{Arc, Mutex};
 
 use axum::{
     Json,
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{FromRequestParts, Path, State},
+    http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
 };
 
 use crate::{
     AppState, Room, SharedRoom, download, flac,
-    protocol::{BackofficeError, CreateInvitation, CreateRoom, FlacState, Role, RoomView},
+    protocol::{BackofficeError, CreateInvitation, CreateRoom, FlacState, Role, RoomView, SignIn},
+    session,
 };
 
-fn check(state: &AppState, token: &str) -> Result<(), Response> {
-    if token == state.backoffice_token {
-        Ok(())
-    } else {
-        Err(StatusCode::NOT_FOUND.into_response())
+/// A request from a signed-in backoffice. As an extractor, a handler cannot forget to check it.
+pub struct Admin;
+
+impl FromRequestParts<AppState> for Admin {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let subject = session::cookie(&parts.headers, session::ADMIN_COOKIE).and_then(|jwt| state.keys.verify(jwt));
+        match subject {
+            Some(s) if s == session::ADMIN_SUBJECT => Ok(Admin),
+            _ => Err(StatusCode::UNAUTHORIZED.into_response()),
+        }
     }
+}
+
+/// Signs in with `BACKOFFICE_TOKEN`: the token is sent once, in a body, never in a URL (ADR-0009).
+pub async fn sign_in(State(state): State<AppState>, Json(req): Json<SignIn>) -> Response {
+    if !session::same_secret(&req.token, &state.backoffice_token) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let jwt = state.keys.sign(session::ADMIN_SUBJECT, session::ADMIN_SECONDS);
+    let cookie = session::set_cookie(session::ADMIN_COOKIE, &jwt, session::ADMIN_SECONDS);
+    (StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response()
+}
+
+pub async fn sign_out() -> Response {
+    let cookie = session::set_cookie(session::ADMIN_COOKIE, "", 0);
+    (StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response()
 }
 
 fn error(e: BackofficeError) -> Response {
@@ -48,8 +71,7 @@ fn normalize(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join("-").to_lowercase()
 }
 
-pub async fn list(Path(token): Path<String>, State(state): State<AppState>) -> Result<Json<Vec<RoomView>>, Response> {
-    check(&state, &token)?;
+pub async fn list(_: Admin, State(state): State<AppState>) -> Result<Json<Vec<RoomView>>, Response> {
     let rooms = state.rooms.lock().unwrap();
     // Newest first.
     Ok(Json(rooms.iter().rev().map(|r| r.lock().unwrap().view()).collect()))
@@ -57,41 +79,47 @@ pub async fn list(Path(token): Path<String>, State(state): State<AppState>) -> R
 
 /// CU1: a new open Room, with its folder and the Host's Invitation.
 pub async fn create_room(
-    Path(token): Path<String>,
+    _: Admin,
     State(state): State<AppState>,
     Json(req): Json<CreateRoom>,
 ) -> Result<Json<RoomView>, Response> {
-    check(&state, &token)?;
     let (name, host) = (normalize(&req.name), normalize(&req.host));
-    if !crate::valid_name(&name) {
+    if !crate::room::valid_name(&name) {
         return Err(error(BackofficeError::InvalidName));
     }
-    let mut rooms = state.rooms.lock().unwrap();
     let base = format!("{name}_{}", crate::utc_date(crate::now_ms()));
-    // Folders of earlier runs stay on disk: never reuse one.
-    let id = (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
-        .find(|id| !state.data.join(id).exists())
-        .unwrap();
+    // Folders of earlier runs stay on disk: never reuse one. create_dir claims a name atomically, so
+    // no lock is held for the disk work and other Rooms are not blocked meanwhile.
+    let mut n = 1;
+    let id = loop {
+        let id = if n == 1 { base.clone() } else { format!("{base}-{n}") };
+        match std::fs::create_dir(state.data.join(&id)) {
+            Ok(()) => break id,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+            Err(e) => {
+                eprintln!("cannot create {id}: {e}");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            }
+        }
+    };
     let mut room = Room::new(id.clone(), name, state.data.join(&id));
-    room.invite(&host, Role::Host).map_err(error)?;
-    std::fs::create_dir_all(&room.dir).map_err(|e| {
-        eprintln!("cannot create {}: {e}", room.dir.display());
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    })?;
+    if let Err(e) = room.invite(&host, Role::Host) {
+        let _ = std::fs::remove_dir(&room.dir);
+        return Err(error(e));
+    }
     room.save_metadata();
     let view = room.view();
-    rooms.push(Arc::new(Mutex::new(room)));
+    state.rooms.lock().unwrap().push(Arc::new(Mutex::new(room)));
     Ok(Json(view))
 }
 
 /// CU2: an Invitation for a Guest.
 pub async fn create_invitation(
-    Path((token, id)): Path<(String, String)>,
+    _: Admin,
+    Path(id): Path<String>,
     State(state): State<AppState>,
     Json(req): Json<CreateInvitation>,
 ) -> Result<Json<RoomView>, Response> {
-    check(&state, &token)?;
     let shared = room(&state, &id)?;
     let mut room = shared.lock().unwrap();
     room.invite(&normalize(&req.name), Role::Guest).map_err(error)?;
@@ -101,10 +129,10 @@ pub async fn create_invitation(
 
 /// CU8: the backoffice warns about `pending` before calling this.
 pub async fn close(
-    Path((token, id)): Path<(String, String)>,
+    _: Admin,
+    Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<RoomView>, Response> {
-    check(&state, &token)?;
     let shared = room(&state, &id)?;
     let mut room = shared.lock().unwrap();
     room.close().map_err(error)?;
@@ -112,11 +140,7 @@ pub async fn close(
 }
 
 /// CU9: the closed Room as one folder: every Track part, complete or not, and `room.json`.
-pub async fn zip(
-    Path((token, id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Result<Response, Response> {
-    check(&state, &token)?;
+pub async fn zip(_: Admin, Path(id): Path<String>, State(state): State<AppState>) -> Result<Response, Response> {
     let shared = room(&state, &id)?;
     let room = shared.lock().unwrap();
     if !room.closed {
@@ -135,10 +159,10 @@ pub async fn zip(
 
 /// CU10: starts converting every Track part of a closed Room to FLAC, in the background.
 pub async fn convert_flac(
-    Path((token, id)): Path<(String, String)>,
+    _: Admin,
+    Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<RoomView>, Response> {
-    check(&state, &token)?;
     let shared = room(&state, &id)?;
     let mut room = shared.lock().unwrap();
     if !room.closed {
@@ -172,11 +196,7 @@ pub async fn convert_flac(
 }
 
 /// CU10: the converted Room, like the Ogg download but with FLAC files.
-pub async fn flac_zip(
-    Path((token, id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Result<Response, Response> {
-    check(&state, &token)?;
+pub async fn flac_zip(_: Admin, Path(id): Path<String>, State(state): State<AppState>) -> Result<Response, Response> {
     let shared = room(&state, &id)?;
     let room = shared.lock().unwrap();
     if room.flac != FlacState::Ready {
@@ -189,4 +209,46 @@ pub async fn flac_zip(
         .chain([(format!("{}/room.json", room.id), room.dir.join("room.json"))])
         .collect();
     Ok(download::zip_response(entries, format!("{}_flac.zip", room.id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Coordinator;
+    use axum::http::Request;
+
+    #[tokio::test]
+    async fn the_backoffice_signs_in_once_and_then_uses_its_cookie() {
+        let state: AppState = Arc::new(Coordinator {
+            rooms: Mutex::new(vec![]),
+            data: std::env::temp_dir(),
+            backoffice_token: "s3cret".into(),
+            keys: session::Keys::new(b"test"),
+            turn: None,
+        });
+        let wrong = sign_in(State(state.clone()), Json(SignIn { token: "wrong".into() })).await;
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        let ok = sign_in(State(state.clone()), Json(SignIn { token: "s3cret".into() })).await;
+        assert_eq!(ok.status(), StatusCode::NO_CONTENT);
+        let set = ok.headers()[header::SET_COOKIE].to_str().unwrap().to_string();
+        assert!(set.contains("HttpOnly") && set.contains("Secure") && set.contains("SameSite=Strict"));
+
+        let parts = |cookie: Option<&str>| {
+            let mut req = Request::builder();
+            if let Some(c) = cookie {
+                req = req.header(header::COOKIE, c);
+            }
+            req.body(()).unwrap().into_parts().0
+        };
+        let pair = set.split(';').next().unwrap();
+        assert!(Admin::from_request_parts(&mut parts(Some(pair)), &state).await.is_ok());
+        assert!(Admin::from_request_parts(&mut parts(None), &state).await.is_err());
+        // A Participant's session, even signed with the right key, is not the backoffice's.
+        let guest = format!("{}={}", session::ADMIN_COOKIE, state.keys.sign("r/ana", 60));
+        assert!(
+            Admin::from_request_parts(&mut parts(Some(&guest)), &state)
+                .await
+                .is_err()
+        );
+    }
 }

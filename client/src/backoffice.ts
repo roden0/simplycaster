@@ -1,12 +1,16 @@
 // Backoffice (CU1, CU2, CU8, CU9): create Rooms and Invitations, close and download Rooms.
-import { t, type MessageKey } from "./i18n.ts";
+import { applyLocale, ROLE_LABEL, STATUS_LABEL, t, type MessageKey } from "./i18n.ts";
+
+/** Same as the Coordinator's MAX_PARTICIPANTS. */
+// shortcut: repeated by hand; send it from the Coordinator if it ever becomes configurable.
+const MAX_PARTICIPANTS = 5;
 import { el } from "./dom.ts";
 import type { RoomView } from "./protocol/RoomView.ts";
 import type { BackofficeError } from "./protocol/BackofficeError.ts";
+import type { SignIn } from "./protocol/SignIn.ts";
 
 const app = document.querySelector<HTMLElement>("#app")!;
-const token = location.pathname.match(/^\/backoffice\/([^/]+)$/)?.[1];
-const api = `/api/backoffice/${token}/rooms`;
+const api = "/api/backoffice/rooms";
 
 const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   invalidName: "errorInvalidName",
@@ -17,8 +21,11 @@ const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   open: "errorOpen",
 };
 
+applyLocale();
 document.title = t("backofficeTitle");
-app.append(el("h1", t("backofficeTitle")), el("small", t("buildInfo", { build: __BUILD_TIME__ })));
+/** What is under the title: the sign-in form, or the Rooms. */
+const main = el("div");
+app.append(el("h1", t("backofficeTitle")), el("small", t("buildInfo", { build: __BUILD_TIME__ })), main);
 const error = el("p");
 error.setAttribute("role", "alert");
 const roomsList = el("div");
@@ -32,9 +39,13 @@ async function call(path: string, body?: object): Promise<RoomView | RoomView[] 
     body: body && JSON.stringify(body),
   });
   if (res.ok) return res.json();
+  if (res.status === 401) {
+    showSignIn(); // the session expired
+    return;
+  }
   const reason: BackofficeError | undefined = await res.json().catch(() => undefined);
   error.textContent =
-    res.status === 404 && !path ? t("backofficeInvalidLink") : reason ? t(ERROR_KEY[reason]) : t("requestFailed", { status: res.status });
+    reason ? t(ERROR_KEY[reason], { max: MAX_PARTICIPANTS }) : t("requestFailed", { status: res.status });
 }
 
 function field(label: string, value = "") {
@@ -92,7 +103,7 @@ function renderRoom(room: RoomView): HTMLElement {
       : t("roomOpen");
   section.append(
     el("h3", t("roomHeading", { name: room.name, created: createdText(room) })),
-    el("p", `${state} · ${t("roomTakes", { takes: room.takes })}`),
+    el("p", t("roomSummary", { state, takes: t("roomTakes", { takes: room.takes }) })),
   );
 
   const list = el("ul");
@@ -101,8 +112,8 @@ function renderRoom(room: RoomView): HTMLElement {
       "li",
       t("invitationEntry", {
         name: inv.name,
-        role: t(inv.role === "host" ? "roleHost" : "roleGuest"),
-        status: t(inv.status === "connected" ? "statusConnected" : "statusDisconnected"),
+        role: t(ROLE_LABEL[inv.role]),
+        status: t(STATUS_LABEL[inv.status]),
       }),
     );
     if (!room.closed) {
@@ -179,9 +190,33 @@ function renderRoom(room: RoomView): HTMLElement {
   return section;
 }
 
-if (!token) {
-  app.append(el("p", t("backofficeNoLink")));
-} else {
+/** Shows the sign-in form; the token goes once in a body, then a session cookie does (ADR-0009). */
+function showSignIn() {
+  const form = el("form");
+  const token = el("input");
+  token.type = "password";
+  token.required = true;
+  token.autocomplete = "current-password";
+  const label = el("label", t("backofficeToken"));
+  label.append(" ", token);
+  form.append(label, " ", el("button", t("signIn")));
+  const wrong = el("p");
+  wrong.setAttribute("role", "alert");
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const res = await fetch("/api/backoffice/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token.value } satisfies SignIn),
+    }).catch(() => undefined);
+    if (res?.ok) showRooms();
+    else wrong.textContent = res?.status === 401 ? t("wrongBackofficeToken") : t("requestFailed", { status: res?.status ?? 0 });
+  };
+  main.replaceChildren(form, wrong);
+  token.focus();
+}
+
+function showRooms() {
   const form = el("form");
   const name = field(t("roomName"));
   const host = field(t("hostName"), "host");
@@ -195,6 +230,16 @@ if (!token) {
   };
   const reload = el("button", t("refresh"));
   reload.onclick = refresh;
-  app.append(el("h2", t("newRoom")), form, error, el("h2", t("rooms")), reload, roomsList);
+  main.replaceChildren(el("h2", t("newRoom")), form, error, el("h2", t("rooms")), reload, roomsList);
   refresh();
+  const signOut = el("button", t("signOut"));
+  signOut.onclick = async () => {
+    await fetch("/api/backoffice/session", { method: "DELETE" }).catch(() => undefined);
+    showSignIn();
+  };
+  main.append(signOut);
 }
+
+const first = await fetch(api).catch(() => undefined);
+if (first?.status === 401) showSignIn();
+else showRooms();

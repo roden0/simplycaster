@@ -1,0 +1,61 @@
+{
+  "closed": true,
+  "created": "2026-11-05",
+  "createdAt": 1793880000000.0,
+  "note": "Times are Coordinator clock, ms since the Unix epoch. startTime of a Take is T, the Sync tone.",
+  "participants": [
+    { "name": "host", "role": "host" },
+    { "name": "ana", "role": "guest" }
+  ],
+  "room": "directo",
+  "takes": [
+    {
+      "startTime": 1793880100000.0,
+      "stopTime": 1793880700000.0,
+      "take": 1,
+      "tracks": [
+        {
+          "bytes": 2000,
+          "calibratedRoundTripMs": null,
+          "clockOffsetMs": 1.5,
+          "clockRttMs": 47.0,
+          "complete": true,
+          "driftMarks": [
+            { "clockOffsetMs": 1.5, "clockRttMs": 47.0, "coordinatorTime": 1793880110000.0, "samples": 480000 },
+            { "clockOffsetMs": 1.6, "clockRttMs": 48.0, "coordinatorTime": 1793880120000.0, "samples": 960000 }
+          ],
+          "driftPpm": null,
+          "durationMs": null,
+          "file": "directo_2026-11-05_t01_host.ogg",
+          "inputLatencyMs": 5.0,
+          "outputLatencyMs": 20.0,
+          "part": 1,
+          "participant": "host",
+          "sampleRate": 48000,
+          "startOffsetMs": 0.0,
+          "startTime": 1793880100000.0,
+          "toneHz": 1000.0
+        },
+        {
+          "bytes": 1500,
+          "calibratedRoundTripMs": 150.0,
+          "clockOffsetMs": -2.0,
+          "clockRttMs": 55.0,
+          "complete": false,
+          "driftMarks": [],
+          "driftPpm": null,
+          "durationMs": null,
+          "file": "directo_2026-11-05_t01_ana.ogg",
+          "inputLatencyMs": null,
+          "outputLatencyMs": null,
+          "part": 1,
+          "participant": "ana",
+          "sampleRate": 48000,
+          "startOffsetMs": 0.0,
+          "startTime": 1793880100000.0,
+          "toneHz": 1500.0
+        }
+      ]
+    }
+  ]
+}

@@ -11,19 +11,19 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 - La conversación, la documentación interna y los ADR van en español. Los documentos públicos (README, CONTRIBUTING, SECURITY), en inglés. El código, los nombres de fichero, la interfaz y los mensajes de commit, en inglés.
 - Los términos del dominio salen de [CONTEXT.md](../CONTEXT.md): en español al hablar, su `en:` en el código. Nunca los de _Avoid_. Un término nuevo se añade primero al glosario.
-- Los nombres que ya viajan por la red o están guardados en los navegadores (`X-Invite`, `?invite=`) no se renombran; el código nuevo usa el término del glosario. *Por qué*: renombrarlos rompe las Subidas pendientes.
+- Los nombres que ya viajan por la red o están guardados en los navegadores (`X-Invite`, el `invite` de las Subidas pendientes) no se renombran; el código nuevo usa el término del glosario. *Por qué*: renombrarlos rompe las Subidas pendientes.
 
 ## Textos visibles (i18n)
 
 - Ningún texto visible en el código: todo pasa por `t()` y el catálogo (`en` es la base).
 - El Coordinador no envía texto para el usuario, sino códigos (`BackofficeError`, `MicProblem`) que el cliente traduce. Así ya se hace hoy.
-- Las líneas compuestas son plantillas del catálogo, no concatenaciones con separadores en el código. *Por qué*: otro idioma puede necesitar otro orden. **[pendiente: B9]**
-- Los números del dominio (máximo de Participantes) entran como parámetro, no escritos a mano en el texto. **[pendiente: B9]**
+- Las líneas compuestas son plantillas del catálogo, no concatenaciones con separadores en el código. *Por qué*: otro idioma puede necesitar otro orden.
+- Los números del dominio (máximo de Participantes) entran como parámetro, no escritos a mano en el texto.
 
 ## Estructura de módulos
 
-- **Rust**: un módulo por responsabilidad. `main.rs` solo tiene la configuración, el registro de Salas (`Coordinator`) y el router. Las reglas de la Sala viven en `Room` y se prueban sin red. Los handlers HTTP y WebSocket traducen la petición y llaman a `Room`. **[pendiente: B2, B3]**
-- **TypeScript**: un módulo por pieza del navegador (`recorder`, `live`, `clock`…). La lógica pura va en su propio módulo, con test. El DOM se construye con `el()` + `replaceChildren` + `textContent`, sin framework. **[pendiente: B8]** para las funciones puras de `main.ts`.
+- **Rust**: un módulo por responsabilidad. `main.rs` solo tiene la configuración, el registro de Salas (`Coordinator`) y el router. Las reglas de la Sala viven en `Room` y se prueban sin red. Los handlers HTTP y WebSocket traducen la petición y llaman a `Room`.
+- **TypeScript**: un módulo por pieza del navegador (`recorder`, `live`, `clock`…). La lógica pura va en su propio módulo, con test. El DOM se construye con `el()` + `replaceChildren` + `textContent`, sin framework. para las funciones puras de `main.ts`.
 - Nunca `innerHTML` con datos. *Por qué*: nombres e ids vienen de fuera.
 - `client/src/protocol/` lo genera `ts-rs` (`make types`): no se edita a mano y se incluye en el mismo commit que el cambio de Rust.
 
@@ -31,30 +31,30 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 - Rust: `Result<_, String>` basta mientras nadie necesite distinguir errores. `unwrap`/`expect` solo para invariantes (cerrojos, datos que el propio Coordinador construyó) o al arrancar.
 - Un error de E/S o de entrada externa nunca hace pánico en un handler. Se registra y se responde con un código de estado.
-- Logs con `eprintln!`, que empiezan por el id de la Sala o de la subida, y nunca con el contenido entero de un mensaje externo (como mucho su longitud o un prefijo). **[pendiente: A4]** y los logs de `main.rs:598`, `645` y `658`.
+- Logs con `eprintln!`, que empiezan por el id de la Sala o de la subida, y nunca con el contenido entero de un mensaje externo (como mucho su longitud o un prefijo).
 - TypeScript: un `catch` vacío lleva un comentario con el porqué (como `keepAwake`), o registra con `console.warn`.
-- Un fallo que el usuario debe conocer se muestra con un mensaje del catálogo, no con `String(e)` a secas. **[pendiente: B9]**
+- Un fallo que el usuario debe conocer se muestra con un mensaje del catálogo, no con `String(e)` a secas.
 
 ## Concurrencia
 
 - Orden de cerrojos: primero el registro de Salas y después la Sala; nunca el registro con una Sala tomada.
 - `std::sync::Mutex`, que nunca se mantiene a través de un `await`; el compilador lo garantiza en los handlers de axum.
-- Con un cerrojo tomado: nada de E/S que crezca con la Sala (leer audio, recorrer ficheros) ni operaciones que puedan hacer pánico por una entrada externa. Escribir un JSON de unos KB se acepta. **[pendiente: B5]**
+- Con un cerrojo tomado: nada de E/S que crezca con la Sala (leer audio, recorrer ficheros) ni operaciones que puedan hacer pánico por una entrada externa. Escribir un JSON de unos KB se acepta.
 - Un estado de "en curso" (`busy`, `Converting`) se libera con un guard o en una tarea que no se pueda cancelar, nunca solo en la línea siguiente a un `await`. *Por qué*: axum cancela el handler si el cliente se desconecta.
 - Para trabajo bloqueante largo (zips, FFmpeg): `spawn_blocking` o un proceso aparte, como ya se hace.
 
 ## Persistencia
 
 - `room.json` es lo único duradero de una Sala: se escribe a un `.tmp` y se renombra.
-- Su formato se define una sola vez, con structs serde que sirven para leer y para escribir, y con tests que usan ficheros de ejemplo de cada versión. Las Salas antiguas (0a) se siguen cargando. **[pendiente: B1]**
+- Su formato se define una sola vez, con structs serde que sirven para leer y para escribir, y con tests que usan ficheros de ejemplo de cada versión. Las Salas antiguas (0a) se siguen cargando.
 - Los secretos (tokens de Invitación) nunca van en `room.json` ni en ningún fichero que acabe en una descarga.
 
 ## Seguridad en los límites de confianza
 
 - Los nombres de fichero se construyen en el Coordinador a partir de nombres validados (`valid_name`); nunca se toma una ruta del cliente. Solo se sirven ficheros listados en la Sala. Así es hoy.
-- Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes. **[pendiente: A4, B6]**
+- Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes.
 - Secretos de 128 bits aleatorios. Sin `BACKOFFICE_TOKEN`, el Coordinador solo arranca en loopback (falla cerrado).
-- Cada handler del backoffice comprueba el secreto antes de nada. Con JWT, la comprobación pasa a un extractor y los secretos salen de las URL. **[pendiente: B10]**
+- Ninguna URL lleva un secreto, salvo el enlace de Invitación. El backoffice y los Participantes cambian su secreto por una cookie de sesión firmada, y el extractor `Admin` la exige en cada handler del backoffice ([ADR-0009](adr/0009-sesiones-con-cookie-firmada.md)).
 - Las herramientas externas (FFmpeg) se lanzan con argumentos, nunca a través de una shell.
 
 ## `shortcut:`
@@ -64,7 +64,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 ## Tests
 
-- Debe tener test toda lógica que pueda perder audio o desalinear: sincronía y deriva, reglas de la Sala (Invitaciones, Tomas, cierre, reconexión), reglas tus (offset, longitud, límites, permisos), carga y guardado de `room.json`, validación de nombres y rutas. **[pendiente: B1, B3, B4]**
+- Debe tener test toda lógica que pueda perder audio o desalinear: sincronía y deriva, reglas de la Sala (Invitaciones, Tomas, cierre, reconexión), reglas tus (offset, longitud, límites, permisos), carga y guardado de `room.json`, validación de nombres y rutas.
 - Para corregir un fallo, primero un test que falla.
 - Tests sin red ni navegador: funciones puras o `Room` con canales. En el cliente, `node --test` sobre módulos puros.
 - Lo que solo se puede probar en un navegador (Worklet, WebCodecs, OPFS, WebRTC) se prueba en dev con un User path (UP1–UP4) y `make measure`.

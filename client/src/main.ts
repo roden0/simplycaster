@@ -1,10 +1,13 @@
-import { t, type MessageKey } from "./i18n.ts";
+import { applyLocale, list, ROLE_LABEL, STATUS_LABEL, t, type MessageKey } from "./i18n.ts";
 import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
 import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
 import { createLive, type Live } from "./live.ts";
+import { micProblem, parsePendingUploads, partPlan, type PendingUploads } from "./session.ts";
 import type { MicProblem } from "./protocol/MicProblem.ts";
 import type { ClientMessage } from "./protocol/ClientMessage.ts";
+import type { Join } from "./protocol/Join.ts";
+import type { Session } from "./protocol/Session.ts";
 import type { ServerMessage } from "./protocol/ServerMessage.ts";
 import type { ParticipantView } from "./protocol/ParticipantView.ts";
 import type { TrackView } from "./protocol/TrackView.ts";
@@ -27,6 +30,7 @@ const PENDING_UPLOADS_KEY = "simplycaster.pendingUploads";
 const app = document.querySelector<HTMLElement>("#app")!;
 const invite = location.pathname.match(/^\/i\/([^/]+)$/)?.[1];
 
+applyLocale();
 document.title = t("appTitle");
 app.append(el("h1", t("appTitle")));
 app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
@@ -63,6 +67,8 @@ let activeTake: { take: number; startTime: number } | undefined;
 /** Take this browser is recording a part of (0 = none). */
 let recordingTake = 0;
 let send: (msg: ClientMessage) => void = () => {};
+/** `?room=…&name=…` of this Participant's session, for the WebSocket and the Host's downloads. */
+let sessionQuery = "";
 /** The live conversation (0c), from the welcome message on. */
 let live: Live | undefined;
 let lastRoster: ParticipantView[] = [];
@@ -82,10 +88,36 @@ if (!invite) {
 
 // --- Room connection and clock sync (CU3) ---
 
-function connect(invite: string) {
+/** Exchanges the Invitation for a session cookie (ADR-0009), then opens the Room's WebSocket with it. */
+async function connect(invite: string) {
+  let res: Response | undefined;
+  try {
+    res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite } satisfies Join),
+    });
+  } catch {
+    // Coordinator unreachable (a redeploy): keep trying, as a dropped socket does.
+  }
+  if (res?.status === 404) {
+    status.textContent = t("invalidInvitation");
+    return;
+  }
+  if (!res?.ok) {
+    status.textContent = t("reconnecting");
+    setTimeout(() => connect(invite), RECONNECT_MS);
+    return;
+  }
+  const session: Session = await res.json();
+  sessionQuery = `?room=${encodeURIComponent(session.room)}&name=${encodeURIComponent(session.name)}`;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws?invite=${encodeURIComponent(invite)}`);
-  send = (msg) => ws.send(JSON.stringify(msg));
+  const ws = new WebSocket(`${proto}://${location.host}/ws${sessionQuery}`);
+  // Only while open: send() throws on a socket still connecting. What is skipped is resent anyway:
+  // the next drift mark in 10 s, the mic status on open, the live offers with the roster.
+  send = (msg) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  };
   let opened = false;
   /** Pongs still expected from the current burst. */
   let burstLeft = 0;
@@ -113,7 +145,7 @@ function connect(invite: string) {
         myName = msg.name;
         status.textContent = t("joinedAs", {
           name: msg.name,
-          role: t(msg.role === "host" ? "roleHost" : "roleGuest"),
+          role: t(ROLE_LABEL[msg.role]),
         });
         isHost = msg.role === "host";
         toneHz = msg.toneHz;
@@ -194,14 +226,16 @@ function renderRoster(participants: ParticipantView[]) {
         p.clockOffsetMs === null
           ? t("clockPending")
           : t("clockOffset", { offset: p.clockOffsetMs.toFixed(1), rtt: p.clockRttMs!.toFixed(1) });
-      const role = t(p.role === "host" ? "roleHost" : "roleGuest");
       const liveState = p.name === myName ? undefined : live?.state(p.name);
-      const state =
-        t(p.status === "connected" ? "statusConnected" : "statusDisconnected") +
-        (p.syncing ? ` · ${t("statusSyncing")}` : "") +
-        (p.micProblem ? ` · ⚠ ${t(MIC_PROBLEM_LABEL[p.micProblem])}` : "") +
-        (liveState && LIVE_LABEL[liveState] ? ` · ${t(LIVE_LABEL[liveState]!)}` : "");
-      return el("li", `${p.name} · ${role} · ${state}${p.status === "connected" ? ` · ${clock}` : ""}`);
+      const liveLabel = liveState && LIVE_LABEL[liveState];
+      const details = [
+        t(STATUS_LABEL[p.status]),
+        ...(p.syncing ? [t("statusSyncing")] : []),
+        ...(p.micProblem ? [t("micProblemEntry", { problem: t(MIC_PROBLEM_LABEL[p.micProblem]) })] : []),
+        ...(liveLabel ? [t(liveLabel)] : []),
+        ...(p.status === "connected" ? [clock] : []),
+      ];
+      return el("li", t("rosterEntry", { name: p.name, role: t(ROLE_LABEL[p.role]), details: list(details) }));
     }),
   );
 }
@@ -233,10 +267,8 @@ function startTrack() {
     takeStatus.textContent = t("notReadyToRecord", { take });
     return;
   }
-  let localStart = startTime - clockOffsetMs;
   // Joining after T (reconnect, CU7): record a new part from now on, without the Sync tone.
-  const late = localStart < localNow() + LATE_START_LEAD_MS;
-  if (late) localStart = localNow() + LATE_START_LEAD_MS;
+  const { localStartMs: localStart, late } = partPlan(startTime, clockOffsetMs, localNow(), LATE_START_LEAD_MS);
   // Unique local name per part; the Coordinator names the files it stores.
   const fileName = `t${String(take).padStart(2, "0")}_${myName}_${Date.now()}.ogg`;
   recorder.start({
@@ -289,17 +321,7 @@ let sentMicProblem: MicProblem | null | undefined;
 
 /** Shows the worst current microphone problem here and tells the Coordinator, so the Host sees it too. */
 function refreshMicProblem() {
-  const problem: MicProblem | null = !micState
-    ? null
-    : micState.ended
-      ? "ended"
-      : micState.muted
-        ? "muted"
-        : document.hidden
-          ? "hidden"
-          : micState.silent
-            ? "silent"
-            : null;
+  const problem = micProblem(micState, document.hidden);
   micWarning.textContent = problem ? t(MIC_PROBLEM_WARNING[problem]) : "";
   if (problem === sentMicProblem) return;
   sentMicProblem = problem;
@@ -324,13 +346,11 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Uploads not yet confirmed by the Coordinator, so a reloaded page can finish them (CU7).
-type PendingUploads = Record<string, { uploadUrl: string; take: number; invite: string }>;
-
 function pendingUploads(): PendingUploads {
   try {
-    return JSON.parse(localStorage.getItem(PENDING_UPLOADS_KEY) ?? "{}");
+    return parsePendingUploads(localStorage.getItem(PENDING_UPLOADS_KEY));
   } catch {
-    return {};
+    return {}; // storage blocked: nothing to resume
   }
 }
 
@@ -375,7 +395,7 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
   );
   progress.setAttribute("role", "status");
   const list = el("ul");
-  const query = `?invite=${encodeURIComponent(invite!)}`;
+  const query = sessionQuery;
   list.append(
     ...tracks.map((tr) => {
       const mb = (tr.bytes / 1e6).toFixed(1);

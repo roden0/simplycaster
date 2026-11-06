@@ -15,6 +15,7 @@ use axum::{
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::room_file::PartFile;
 use crate::{AppState, MAX_TRACK_BYTES, SharedRoom, track_stem};
 
 const TUS_VERSION: &str = "1.0.0";
@@ -22,8 +23,11 @@ const TUS_VERSION: &str = "1.0.0";
 const MIN_DRIFT_SPAN_MS: f64 = 60_000.0;
 /// Beyond this the marks are wrong, not the clock: real audio clocks drift tens of ppm.
 const MAX_DRIFT_PPM: f64 = 1000.0;
+/// Parts per Participant and Take. Each reconnection starts one, so a client reconnecting in a loop,
+/// or a leaked Invitation, would otherwise fill the disk. Real Takes have a handful.
+const MAX_PARTS: u32 = 50;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DriftMark {
     pub samples: u64,
@@ -56,32 +60,14 @@ pub struct Upload {
     pub clock_offset_ms: Option<f64>,
     pub clock_rtt_ms: Option<f64>,
     pub length: Option<u64>,
+    /// Audio received, read from the Ogg once: when the part completes, or when its Room closes.
+    pub duration_ms: Option<f64>,
     /// A PATCH is in flight; reject a concurrent one instead of interleaving bytes.
     busy: bool,
 }
 
-/// A Track part as `room.json` records it, to list past Rooms after a restart.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavedPart {
-    participant: String,
-    part: u32,
-    file: String,
-    complete: bool,
-    bytes: u64,
-    start_time: f64,
-    sample_rate: u32,
-    output_latency_ms: Option<f64>,
-    input_latency_ms: Option<f64>,
-    calibrated_round_trip_ms: Option<f64>,
-    clock_offset_ms: Option<f64>,
-    clock_rtt_ms: Option<f64>,
-    #[serde(default)]
-    drift_marks: Vec<DriftMark>,
-}
-
 impl Upload {
-    pub fn from_saved(take: u32, p: SavedPart) -> Upload {
+    pub fn from_file(take: u32, p: PartFile) -> Upload {
         Upload {
             id: p.file.trim_end_matches(".ogg").to_string(),
             take,
@@ -97,7 +83,31 @@ impl Upload {
             clock_offset_ms: p.clock_offset_ms,
             clock_rtt_ms: p.clock_rtt_ms,
             length: p.complete.then_some(p.bytes),
+            duration_ms: p.duration_ms,
             busy: false,
+        }
+    }
+
+    /// The part as `room.json` records it; `t` is its Take's T, the Sync tone.
+    pub fn to_file(&self, t: f64, tone_hz: f64) -> PartFile {
+        PartFile {
+            participant: self.participant.clone(),
+            part: self.part,
+            file: self.file(),
+            complete: self.is_complete(),
+            bytes: self.offset,
+            duration_ms: self.duration_ms,
+            start_time: self.start_time,
+            start_offset_ms: self.start_time - t,
+            sample_rate: self.sample_rate,
+            tone_hz,
+            output_latency_ms: self.output_latency_ms,
+            input_latency_ms: self.input_latency_ms,
+            calibrated_round_trip_ms: self.calibrated_round_trip_ms,
+            clock_offset_ms: self.clock_offset_ms,
+            clock_rtt_ms: self.clock_rtt_ms,
+            drift_marks: self.drift_marks.clone(),
+            drift_ppm: self.drift_ppm(),
         }
     }
 
@@ -122,8 +132,27 @@ impl Upload {
 
     /// Length of the audio received so far (ms), from the Ogg file itself. Shorter than its
     /// Take when the browser stopped early, e.g. closed mid-Take: the part keeps what it recorded.
-    pub fn duration_ms(&self, dir: &std::path::Path) -> Option<f64> {
+    /// Reads the file: call it without the Room lock, or once per part.
+    pub fn read_duration_ms(&self, dir: &std::path::Path) -> Option<f64> {
         ogg_opus_duration_ms(&dir.join(self.file()))
+    }
+
+    /// Whether a PATCH at `client_offset`, declaring `new_length` if any, may write now: one at a time,
+    /// exactly where the Coordinator is, and never past the declared or maximum length. A deferred
+    /// length is fixed by the first PATCH that declares it.
+    pub fn check_patch(&mut self, client_offset: u64, new_length: Option<u64>) -> Result<(), StatusCode> {
+        if self.busy || client_offset != self.offset {
+            return Err(StatusCode::CONFLICT);
+        }
+        match (self.length, new_length) {
+            (Some(a), Some(b)) if a != b => Err(StatusCode::BAD_REQUEST),
+            (_, Some(b)) if b > MAX_TRACK_BYTES || b < self.offset => Err(StatusCode::BAD_REQUEST),
+            (None, Some(b)) => {
+                self.length = Some(b);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 
     pub fn is_complete(&self) -> bool {
@@ -202,6 +231,12 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         .iter()
         .filter(|u| u.take == take && u.participant == name)
         .count() as u32;
+    // Not limited to the Take being recorded: a POST right after the stop is legitimate. 403 and not 409,
+    // which tus-js-client would retry.
+    if part > MAX_PARTS {
+        eprintln!("{} {name}: refusing part {part} of Take {take}", room.id);
+        return tus(StatusCode::FORBIDDEN);
+    }
     let id = track_stem(&room.id, take, &name, part);
     if let Err(e) = std::fs::File::create(room.dir.join(format!("{id}.ogg"))) {
         eprintln!("cannot create {id}.ogg: {e}");
@@ -219,6 +254,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         calibrated_round_trip_ms,
         offset: 0,
         length,
+        duration_ms: None,
         drift_marks: Vec::new(),
         clock_offset_ms,
         clock_rtt_ms,
@@ -274,14 +310,8 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         let Some(u) = room.uploads.iter_mut().find(|u| u.id == id && u.participant == name) else {
             return tus(StatusCode::NOT_FOUND);
         };
-        if u.busy || client_offset != u.offset {
-            return tus(StatusCode::CONFLICT);
-        }
-        match (u.length, new_length) {
-            (Some(a), Some(b)) if a != b => return tus(StatusCode::BAD_REQUEST),
-            (_, Some(b)) if b > MAX_TRACK_BYTES || b < u.offset => return tus(StatusCode::BAD_REQUEST),
-            (None, Some(b)) => u.length = Some(b),
-            _ => {}
+        if let Err(status) = u.check_patch(client_offset, new_length) {
+            return tus(status);
         }
         u.busy = true;
         (dir.join(format!("{id}.ogg")), u.offset, u.length)
@@ -296,6 +326,11 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
     };
     let result = append(&path, body, limit - offset).await;
     drop(writing); // before taking the lock again: its Drop takes it
+    // Read once, without the lock, if this PATCH completed the part (ADR-0006 B5).
+    let size = std::fs::metadata(&path).map(|m| m.len()).ok();
+    let duration_ms = (length.is_some() && size == length)
+        .then(|| ogg_opus_duration_ms(&path))
+        .flatten();
 
     let mut room = shared.lock().unwrap();
     let Some(u) = room.uploads.iter_mut().find(|u| u.id == id) else {
@@ -307,6 +342,7 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         return tus_with(StatusCode::BAD_REQUEST, [("Upload-Offset", offset.to_string())]);
     }
     if u.is_complete() {
+        u.duration_ms = duration_ms;
         let take = u.take;
         room.refresh_syncing();
         room.broadcast_roster();
@@ -392,7 +428,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        Upload::from_saved(1, serde_json::from_str(&saved).unwrap())
+        Upload::from_file(1, serde_json::from_str(&saved).unwrap())
     }
 
     #[test]
@@ -409,8 +445,8 @@ mod tests {
         assert!((ppm - 30.0).abs() < 0.5, "{ppm}");
     }
 
-    #[test]
-    fn duration_from_the_last_ogg_page() {
+    /// The bytes of an Ogg Opus file of 10 s that matter to its duration: head and last page.
+    fn ten_second_ogg() -> Vec<u8> {
         let mut ogg = b"OggS\0\x02".to_vec();
         ogg.extend([0u8; 22]);
         ogg.extend(b"OpusHead\x01\x01");
@@ -419,69 +455,210 @@ mod tests {
         ogg.extend(b"OggS\0\x04");
         ogg.extend((48_000i64 * 10 + 312).to_le_bytes());
         ogg.extend([0u8; 40]);
+        ogg
+    }
+
+    #[test]
+    fn duration_from_the_last_ogg_page() {
+        let ogg = ten_second_ogg();
         let path = std::env::temp_dir().join(format!("{}.ogg", crate::random_token()));
         std::fs::write(&path, ogg).unwrap();
         assert_eq!(ogg_opus_duration_ms(&path), Some(10_000.0));
         std::fs::remove_file(path).unwrap();
     }
 
-    #[tokio::test]
-    async fn a_patch_cancelled_mid_body_does_not_lock_the_upload() {
+    /// A Room recording Take 1, with Ana and Bea invited; returns their Invitation tokens.
+    fn studio() -> (AppState, std::path::PathBuf, String, String) {
         use crate::{Coordinator, Role, Room};
         use std::sync::{Arc, Mutex};
-
         let dir = std::env::temp_dir().join(crate::random_token());
         std::fs::create_dir_all(&dir).unwrap();
         let mut room = Room::new("r_2026-11-06".into(), "r".into(), dir.clone());
         room.invite("ana", Role::Guest).unwrap();
+        room.invite("bea", Role::Guest).unwrap();
         room.start_take();
-        let token = room.participants[0].token.clone();
-        let state: AppState = Arc::new(Coordinator {
+        let (ana, bea) = (room.participants[0].token.clone(), room.participants[1].token.clone());
+        let state = Arc::new(Coordinator {
             rooms: Mutex::new(vec![Arc::new(Mutex::new(room))]),
             data: dir.clone(),
             backoffice_token: "admin".into(),
+            keys: crate::session::Keys::new(b"test"),
             turn: None,
         });
-        let headers = |pairs: &[(&'static str, &str)]| {
-            let mut h = HeaderMap::new();
-            h.insert("X-Invite", token.parse().unwrap());
-            for (k, v) in pairs {
-                h.insert(*k, v.parse().unwrap());
-            }
-            h
-        };
+        (state, dir, ana, bea)
+    }
 
-        let created = create(
-            Path(1),
-            State(state.clone()),
-            headers(&[
-                ("Upload-Defer-Length", "1"),
-                ("X-Track-Start", "0"),
-                ("X-Sample-Rate", "48000"),
-            ]),
-        )
-        .await;
+    fn headers(token: &str, pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("X-Invite", token.parse().unwrap());
+        for (k, v) in pairs {
+            h.insert(*k, v.parse().unwrap());
+        }
+        h
+    }
+
+    const NEW_PART: [(&str, &str); 3] = [
+        ("Upload-Defer-Length", "1"),
+        ("X-Track-Start", "0"),
+        ("X-Sample-Rate", "48000"),
+    ];
+
+    /// Creates the next part of the Participant behind `token` and returns its upload id.
+    async fn new_part(state: &AppState, token: &str) -> String {
+        let created = create(Path(1), State(state.clone()), headers(token, &NEW_PART)).await;
         assert_eq!(created.status(), StatusCode::CREATED);
-        let id = created.headers()["Location"]
+        created.headers()["Location"]
             .to_str()
             .unwrap()
             .trim_start_matches("/uploads/")
-            .to_string();
-        let patch_headers = headers(&[
-            ("Content-Type", "application/offset+octet-stream"),
-            ("Upload-Offset", "0"),
-        ]);
+            .to_string()
+    }
+
+    fn patch_at(token: &str, offset: &str) -> HeaderMap {
+        headers(
+            token,
+            &[
+                ("Content-Type", "application/offset+octet-stream"),
+                ("Upload-Offset", offset),
+            ],
+        )
+    }
+
+    #[tokio::test]
+    async fn a_patch_cancelled_mid_body_does_not_lock_the_upload() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
 
         // The connection drops mid-body: the handler future is dropped while it waits for bytes.
         let stalled = Body::from_stream(futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>());
         let cut = std::time::Duration::from_millis(50);
-        let first = patch(Path(id.clone()), State(state.clone()), patch_headers.clone(), stalled);
+        let first = patch(Path(id.clone()), State(state.clone()), patch_at(&ana, "0"), stalled);
         assert!(tokio::time::timeout(cut, first).await.is_err());
 
         // The client resumes from offset 0, and must not get 409 forever.
-        let resumed = patch(Path(id), State(state), patch_headers, Body::from("OggS")).await;
+        let resumed = patch(Path(id), State(state), patch_at(&ana, "0"), Body::from("OggS")).await;
         assert_eq!(resumed.status(), StatusCode::NO_CONTENT);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_upload_grows_and_completes_with_its_final_length() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        let first = patch(
+            Path(id.clone()),
+            State(state.clone()),
+            patch_at(&ana, "0"),
+            Body::from("Ogg"),
+        )
+        .await;
+        assert_eq!(first.headers()["Upload-Offset"], "3");
+        // A retry of a PATCH that already arrived is refused: the client asks HEAD and resumes.
+        let again = patch(
+            Path(id.clone()),
+            State(state.clone()),
+            patch_at(&ana, "0"),
+            Body::from("Ogg"),
+        )
+        .await;
+        assert_eq!(again.status(), StatusCode::CONFLICT);
+        let mut last = patch_at(&ana, "3");
+        last.insert("Upload-Length", "4".parse().unwrap());
+        let done = patch(Path(id.clone()), State(state.clone()), last, Body::from("S")).await;
+        assert_eq!(done.status(), StatusCode::NO_CONTENT);
+        assert_eq!(std::fs::read(dir.join(format!("{id}.ogg"))).unwrap(), b"OggS");
+        let saved = crate::room_file::RoomFile::read(&dir).unwrap();
+        assert!(saved.takes[0].tracks[0].complete);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn room_json_records_the_duration_of_a_completed_part() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        let ogg = ten_second_ogg();
+        let mut last = patch_at(&ana, "0");
+        last.insert("Upload-Length", ogg.len().to_string().parse().unwrap());
+        let done = patch(Path(id), State(state), last, Body::from(ogg)).await;
+        assert_eq!(done.status(), StatusCode::NO_CONTENT);
+        let saved = crate::room_file::RoomFile::read(&dir).unwrap();
+        assert_eq!(saved.takes[0].tracks[0].duration_ms, Some(10_000.0));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn parts_per_take_are_limited() {
+        let (state, dir, ana, bea) = studio();
+        for _ in 0..MAX_PARTS {
+            new_part(&state, &ana).await;
+        }
+        let one_more = create(Path(1), State(state.clone()), headers(&ana, &NEW_PART)).await;
+        assert_eq!(one_more.status(), StatusCode::FORBIDDEN);
+        new_part(&state, &bea).await; // per Participant
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn nobody_touches_the_upload_of_another_participant() {
+        let (state, dir, ana, bea) = studio();
+        let id = new_part(&state, &ana).await;
+        let head = head(Path(id.clone()), State(state.clone()), headers(&bea, &[])).await;
+        assert_eq!(head.status(), StatusCode::NOT_FOUND);
+        let write = patch(Path(id), State(state.clone()), patch_at(&bea, "0"), Body::from("x")).await;
+        assert_eq!(write.status(), StatusCode::NOT_FOUND);
+        let stranger = create(Path(1), State(state), headers("not-an-invitation", &NEW_PART)).await;
+        assert_eq!(stranger.status(), StatusCode::FORBIDDEN);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_closed_room_receives_nothing_more() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        {
+            let rooms = state.rooms.lock().unwrap();
+            let mut room = rooms[0].lock().unwrap();
+            room.stop_take();
+            room.close().unwrap();
+        }
+        let write = patch(Path(id), State(state.clone()), patch_at(&ana, "0"), Body::from("x")).await;
+        assert_eq!(write.status(), StatusCode::FORBIDDEN);
+        let more = create(Path(1), State(state), headers(&ana, &NEW_PART)).await;
+        assert_eq!(more.status(), StatusCode::FORBIDDEN);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_track_cannot_exceed_the_maximum_size() {
+        let (state, dir, ana, _) = studio();
+        let too_big = (MAX_TRACK_BYTES + 1).to_string();
+        let mut big = headers(&ana, &NEW_PART);
+        big.remove("Upload-Defer-Length");
+        big.insert("Upload-Length", too_big.parse().unwrap());
+        assert_eq!(
+            create(Path(1), State(state), big).await.status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_patch_writes_only_where_and_as_much_as_allowed() {
+        let mut u = part(&[]);
+        u.length = None;
+        u.offset = 10;
+        assert_eq!(u.check_patch(0, None), Err(StatusCode::CONFLICT));
+        assert_eq!(u.check_patch(10, Some(5)), Err(StatusCode::BAD_REQUEST));
+        assert_eq!(
+            u.check_patch(10, Some(MAX_TRACK_BYTES + 1)),
+            Err(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(u.check_patch(10, None), Ok(()));
+        assert_eq!(u.check_patch(10, Some(20)), Ok(()));
+        assert_eq!(u.length, Some(20));
+        assert_eq!(u.check_patch(10, Some(30)), Err(StatusCode::BAD_REQUEST));
+        u.busy = true;
+        assert_eq!(u.check_patch(10, None), Err(StatusCode::CONFLICT));
     }
 
     #[test]

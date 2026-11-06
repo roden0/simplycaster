@@ -34,7 +34,7 @@ nano .env
 docker compose up -d
 ```
 
-Then open `https://<DOMAIN>/backoffice/<BACKOFFICE_TOKEN>`, create a Room and send each Participant their link. Keep that backoffice link secret: whoever has it can create Rooms and download every recording.
+Then open `https://<DOMAIN>/backoffice`, sign in with your `BACKOFFICE_TOKEN`, create a Room and send each Participant their link. Keep the token secret: whoever has it can create Rooms and download every recording. Each Invitation link is secret too, until its Room is closed.
 
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
