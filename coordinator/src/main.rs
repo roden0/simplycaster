@@ -398,7 +398,12 @@ impl Room {
             "participants": self.participants.iter().map(|p| serde_json::json!({ "name": p.view.name, "role": p.view.role })).collect::<Vec<_>>(),
             "takes": takes,
         });
-        if let Err(e) = std::fs::write(self.dir.join("room.json"), serde_json::to_vec_pretty(&meta).unwrap()) {
+        // Written aside and renamed, so a process killed mid-write never leaves a truncated room.json.
+        // shortcut: no fsync, so a power cut can still lose the last write; fsync file and folder if that matters.
+        let tmp = self.dir.join("room.json.tmp");
+        let written = std::fs::write(&tmp, serde_json::to_vec_pretty(&meta).unwrap())
+            .and_then(|()| std::fs::rename(&tmp, self.dir.join("room.json")));
+        if let Err(e) = written {
             eprintln!("{}: cannot write room.json: {e}", self.id);
         }
     }
@@ -810,7 +815,9 @@ mod tests {
         room.close().unwrap();
         assert_eq!(room.invite("late", Role::Guest), Err(BackofficeError::Closed));
 
-        // After a restart it comes back closed, from its room.json.
+        // After a restart it comes back closed, from its room.json, even with a half-written leftover.
+        assert!(!dir.join("room.json.tmp").exists());
+        std::fs::write(dir.join("room.json.tmp"), b"{\"room\":").unwrap();
         let past = Room::load(dir.clone()).unwrap();
         assert!(past.closed);
         assert_eq!((past.name.as_str(), past.take), ("r", 1));

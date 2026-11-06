@@ -45,7 +45,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 
 ## Persistencia
 
-- `room.json` es lo único duradero de una Sala: se escribe a un `.tmp` y se renombra. **[pendiente: A2]**
+- `room.json` es lo único duradero de una Sala: se escribe a un `.tmp` y se renombra.
 - Su formato se define una sola vez, con structs serde que sirven para leer y para escribir, y con tests que usan ficheros de ejemplo de cada versión. Las Salas antiguas (0a) se siguen cargando. **[pendiente: B1]**
 - Los secretos (tokens de Invitación) nunca van en `room.json` ni en ningún fichero que acabe en una descarga.
 
