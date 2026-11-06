@@ -70,6 +70,8 @@ type AppState = Arc<Coordinator>;
 impl Coordinator {
     /// The open Room behind an Invitation link token, and the Participant's fixed name and role.
     fn by_invite(&self, token: &str) -> Option<(SharedRoom, String, Role)> {
+        // shortcut: walks every Room, closed ones too, on each PATCH and connection; add a token index
+        // when there are hundreds of Rooms or contention is measured (ADR-0006 B12).
         for shared in self.rooms.lock().unwrap().iter() {
             let room = shared.lock().unwrap();
             if room.closed {

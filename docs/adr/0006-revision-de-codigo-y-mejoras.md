@@ -109,6 +109,7 @@ Esfuerzo: **S** (menos de medio día), **M** (uno o dos días), **L** (más, y c
 **B12. Índice de Invitaciones (S–M, cuando haya muchas Salas)**
 - Problema: `by_invite` recorre todas las Salas, también las cerradas, y toma el cerrojo de cada una (`main.rs:471-482`) en cada PATCH (uno cada ~2 s por Participante) y en cada conexión. Además, `load_rooms` mete en memoria todas las Salas pasadas (`main.rs:438-452`). Hoy es despreciable.
 - Propuesta, cuando haya cientos de Salas o se mida contención: un `HashMap<token, …>` en `Coordinator`, que se actualiza al invitar y al cerrar.
+- Actualización (2026-11-06): sigue sin disparador. Queda un `shortcut:` en `by_invite` que lo recuerda.
 
 **B13. Estáticos dentro del binario (M, paga el `shortcut:` de `main.rs:686`)**
 - Hoy la ruta por defecto se fija al compilar (`env!("CARGO_MANIFEST_DIR")`, `main.rs:689`). Para Docker no hace falta cambiar nada. Se paga cuando se distribuya el binario suelto, con un ADR que elija el crate (`include_dir` o `rust-embed`).
