@@ -66,22 +66,29 @@ pub async fn create_room(
     if !crate::room::valid_name(&name) {
         return Err(error(BackofficeError::InvalidName));
     }
-    let mut rooms = state.rooms.lock().unwrap();
     let base = format!("{name}_{}", crate::utc_date(crate::now_ms()));
-    // Folders of earlier runs stay on disk: never reuse one.
-    let id = (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
-        .find(|id| !state.data.join(id).exists())
-        .unwrap();
+    // Folders of earlier runs stay on disk: never reuse one. create_dir claims a name atomically, so
+    // no lock is held for the disk work and other Rooms are not blocked meanwhile.
+    let mut n = 1;
+    let id = loop {
+        let id = if n == 1 { base.clone() } else { format!("{base}-{n}") };
+        match std::fs::create_dir(state.data.join(&id)) {
+            Ok(()) => break id,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+            Err(e) => {
+                eprintln!("cannot create {id}: {e}");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            }
+        }
+    };
     let mut room = Room::new(id.clone(), name, state.data.join(&id));
-    room.invite(&host, Role::Host).map_err(error)?;
-    std::fs::create_dir_all(&room.dir).map_err(|e| {
-        eprintln!("cannot create {}: {e}", room.dir.display());
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    })?;
+    if let Err(e) = room.invite(&host, Role::Host) {
+        let _ = std::fs::remove_dir(&room.dir);
+        return Err(error(e));
+    }
     room.save_metadata();
     let view = room.view();
-    rooms.push(Arc::new(Mutex::new(room)));
+    state.rooms.lock().unwrap().push(Arc::new(Mutex::new(room)));
     Ok(Json(view))
 }
 

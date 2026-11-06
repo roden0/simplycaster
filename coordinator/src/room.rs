@@ -405,6 +405,12 @@ impl Room {
             return Err(BackofficeError::Recording);
         }
         self.closed = true;
+        // Parts left incomplete stop growing now: read what they hold, once.
+        for i in 0..self.uploads.len() {
+            if !self.uploads[i].is_complete() {
+                self.uploads[i].duration_ms = self.uploads[i].read_duration_ms(&self.dir);
+            }
+        }
         self.save_metadata();
         self.broadcast(ServerMessage::RoomClosed);
         Ok(())
@@ -444,7 +450,7 @@ impl Room {
                     .uploads
                     .iter()
                     .filter(|u| u.take == take)
-                    .map(|u| u.to_file(t.start_time, self.tone_hz(&u.participant), u.duration_ms(&self.dir)))
+                    .map(|u| u.to_file(t.start_time, self.tone_hz(&u.participant)))
                     .collect();
                 TakeFile {
                     take,

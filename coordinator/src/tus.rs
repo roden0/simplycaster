@@ -57,6 +57,8 @@ pub struct Upload {
     pub clock_offset_ms: Option<f64>,
     pub clock_rtt_ms: Option<f64>,
     pub length: Option<u64>,
+    /// Audio received, read from the Ogg once: when the part completes, or when its Room closes.
+    pub duration_ms: Option<f64>,
     /// A PATCH is in flight; reject a concurrent one instead of interleaving bytes.
     busy: bool,
 }
@@ -78,19 +80,20 @@ impl Upload {
             clock_offset_ms: p.clock_offset_ms,
             clock_rtt_ms: p.clock_rtt_ms,
             length: p.complete.then_some(p.bytes),
+            duration_ms: p.duration_ms,
             busy: false,
         }
     }
 
     /// The part as `room.json` records it; `t` is its Take's T, the Sync tone.
-    pub fn to_file(&self, t: f64, tone_hz: f64, duration_ms: Option<f64>) -> PartFile {
+    pub fn to_file(&self, t: f64, tone_hz: f64) -> PartFile {
         PartFile {
             participant: self.participant.clone(),
             part: self.part,
             file: self.file(),
             complete: self.is_complete(),
             bytes: self.offset,
-            duration_ms,
+            duration_ms: self.duration_ms,
             start_time: self.start_time,
             start_offset_ms: self.start_time - t,
             sample_rate: self.sample_rate,
@@ -126,7 +129,8 @@ impl Upload {
 
     /// Length of the audio received so far (ms), from the Ogg file itself. Shorter than its
     /// Take when the browser stopped early, e.g. closed mid-Take: the part keeps what it recorded.
-    pub fn duration_ms(&self, dir: &std::path::Path) -> Option<f64> {
+    /// Reads the file: call it without the Room lock, or once per part.
+    pub fn read_duration_ms(&self, dir: &std::path::Path) -> Option<f64> {
         ogg_opus_duration_ms(&dir.join(self.file()))
     }
 
@@ -241,6 +245,7 @@ pub async fn create(Path(take): Path<u32>, State(state): State<AppState>, header
         calibrated_round_trip_ms,
         offset: 0,
         length,
+        duration_ms: None,
         drift_marks: Vec::new(),
         clock_offset_ms,
         clock_rtt_ms,
@@ -312,6 +317,11 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
     };
     let result = append(&path, body, limit - offset).await;
     drop(writing); // before taking the lock again: its Drop takes it
+    // Read once, without the lock, if this PATCH completed the part (ADR-0006 B5).
+    let size = std::fs::metadata(&path).map(|m| m.len()).ok();
+    let duration_ms = (length.is_some() && size == length)
+        .then(|| ogg_opus_duration_ms(&path))
+        .flatten();
 
     let mut room = shared.lock().unwrap();
     let Some(u) = room.uploads.iter_mut().find(|u| u.id == id) else {
@@ -323,6 +333,7 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         return tus_with(StatusCode::BAD_REQUEST, [("Upload-Offset", offset.to_string())]);
     }
     if u.is_complete() {
+        u.duration_ms = duration_ms;
         let take = u.take;
         room.refresh_syncing();
         room.broadcast_roster();
@@ -425,8 +436,8 @@ mod tests {
         assert!((ppm - 30.0).abs() < 0.5, "{ppm}");
     }
 
-    #[test]
-    fn duration_from_the_last_ogg_page() {
+    /// The bytes of an Ogg Opus file of 10 s that matter to its duration: head and last page.
+    fn ten_second_ogg() -> Vec<u8> {
         let mut ogg = b"OggS\0\x02".to_vec();
         ogg.extend([0u8; 22]);
         ogg.extend(b"OpusHead\x01\x01");
@@ -435,6 +446,12 @@ mod tests {
         ogg.extend(b"OggS\0\x04");
         ogg.extend((48_000i64 * 10 + 312).to_le_bytes());
         ogg.extend([0u8; 40]);
+        ogg
+    }
+
+    #[test]
+    fn duration_from_the_last_ogg_page() {
+        let ogg = ten_second_ogg();
         let path = std::env::temp_dir().join(format!("{}.ogg", crate::random_token()));
         std::fs::write(&path, ogg).unwrap();
         assert_eq!(ogg_opus_duration_ms(&path), Some(10_000.0));
@@ -542,6 +559,20 @@ mod tests {
         assert_eq!(std::fs::read(dir.join(format!("{id}.ogg"))).unwrap(), b"OggS");
         let saved = crate::room_file::RoomFile::read(&dir).unwrap();
         assert!(saved.takes[0].tracks[0].complete);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn room_json_records_the_duration_of_a_completed_part() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        let ogg = ten_second_ogg();
+        let mut last = patch_at(&ana, "0");
+        last.insert("Upload-Length", ogg.len().to_string().parse().unwrap());
+        let done = patch(Path(id), State(state), last, Body::from(ogg)).await;
+        assert_eq!(done.status(), StatusCode::NO_CONTENT);
+        let saved = crate::room_file::RoomFile::read(&dir).unwrap();
+        assert_eq!(saved.takes[0].tracks[0].duration_ms, Some(10_000.0));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
