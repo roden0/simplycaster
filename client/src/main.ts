@@ -6,6 +6,8 @@ import { createLive, type Live } from "./live.ts";
 import { micProblem, parsePendingUploads, partPlan, type PendingUploads } from "./session.ts";
 import type { MicProblem } from "./protocol/MicProblem.ts";
 import type { ClientMessage } from "./protocol/ClientMessage.ts";
+import type { Join } from "./protocol/Join.ts";
+import type { Session } from "./protocol/Session.ts";
 import type { ServerMessage } from "./protocol/ServerMessage.ts";
 import type { ParticipantView } from "./protocol/ParticipantView.ts";
 import type { TrackView } from "./protocol/TrackView.ts";
@@ -65,6 +67,8 @@ let activeTake: { take: number; startTime: number } | undefined;
 /** Take this browser is recording a part of (0 = none). */
 let recordingTake = 0;
 let send: (msg: ClientMessage) => void = () => {};
+/** `?room=…&name=…` of this Participant's session, for the WebSocket and the Host's downloads. */
+let sessionQuery = "";
 /** The live conversation (0c), from the welcome message on. */
 let live: Live | undefined;
 let lastRoster: ParticipantView[] = [];
@@ -84,9 +88,31 @@ if (!invite) {
 
 // --- Room connection and clock sync (CU3) ---
 
-function connect(invite: string) {
+/** Exchanges the Invitation for a session cookie (ADR-0009), then opens the Room's WebSocket with it. */
+async function connect(invite: string) {
+  let res: Response | undefined;
+  try {
+    res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite } satisfies Join),
+    });
+  } catch {
+    // Coordinator unreachable (a redeploy): keep trying, as a dropped socket does.
+  }
+  if (res?.status === 404) {
+    status.textContent = t("invalidInvitation");
+    return;
+  }
+  if (!res?.ok) {
+    status.textContent = t("reconnecting");
+    setTimeout(() => connect(invite), RECONNECT_MS);
+    return;
+  }
+  const session: Session = await res.json();
+  sessionQuery = `?room=${encodeURIComponent(session.room)}&name=${encodeURIComponent(session.name)}`;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws?invite=${encodeURIComponent(invite)}`);
+  const ws = new WebSocket(`${proto}://${location.host}/ws${sessionQuery}`);
   // Only while open: send() throws on a socket still connecting. What is skipped is resent anyway:
   // the next drift mark in 10 s, the mic status on open, the live offers with the roster.
   send = (msg) => {
@@ -369,7 +395,7 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
   );
   progress.setAttribute("role", "status");
   const list = el("ul");
-  const query = `?invite=${encodeURIComponent(invite!)}`;
+  const query = sessionQuery;
   list.append(
     ...tracks.map((tr) => {
       const mb = (tr.bytes / 1e6).toFixed(1);

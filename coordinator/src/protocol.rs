@@ -196,6 +196,29 @@ pub enum FlacState {
     Failed,
 }
 
+/// Signs in to the backoffice with `BACKOFFICE_TOKEN`, for a session cookie (ADR-0009).
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SignIn {
+    pub token: String,
+}
+
+/// Exchanges a Participant's Invitation for a session cookie (ADR-0009).
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct Join {
+    pub invite: String,
+}
+
+/// Whose session a cookie holds: the Room id and fixed name that `/ws` and the downloads take in
+/// their query. Not secret: the cookie is what proves it.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct Session {
+    pub room: String,
+    pub name: String,
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

@@ -482,6 +482,7 @@ mod tests {
             rooms: Mutex::new(vec![Arc::new(Mutex::new(room))]),
             data: dir.clone(),
             backoffice_token: "admin".into(),
+            keys: crate::session::Keys::new(b"test"),
             turn: None,
         });
         (state, dir, ana, bea)

@@ -6,6 +6,7 @@ mod live;
 mod protocol;
 mod room;
 mod room_file;
+mod session;
 mod tus;
 mod ws;
 
@@ -59,6 +60,8 @@ pub struct Coordinator {
     rooms: Mutex<Vec<SharedRoom>>,
     data: PathBuf,
     backoffice_token: String,
+    /// Signs and checks the session cookies (ADR-0009).
+    keys: session::Keys,
     /// STUN/TURN for the live conversation (ADR-0005); `None` when not configured.
     turn: Option<live::Turn>,
 }
@@ -82,9 +85,33 @@ impl Coordinator {
         None
     }
 
-    fn host_room(&self, token: &str) -> Option<SharedRoom> {
-        self.by_invite(token)
-            .and_then(|(room, _, role)| (role == Role::Host).then_some(room))
+    /// The open Room and role of the Participant `room`/`name`, if the request carries a valid
+    /// session cookie for them (ADR-0009).
+    fn by_session(&self, headers: &axum::http::HeaderMap, room: &str, name: &str) -> Option<(SharedRoom, Role)> {
+        let jwt = session::cookie(headers, &session::participant_cookie(room, name))?;
+        if self.keys.verify(jwt)? != format!("{room}/{name}") {
+            return None;
+        }
+        let shared = self
+            .rooms
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.lock().unwrap().id == room)?
+            .clone();
+        let role = {
+            let r = shared.lock().unwrap();
+            if r.closed {
+                return None;
+            }
+            r.participants.iter().find(|p| p.view.name == name)?.view.role
+        };
+        Some((shared, role))
+    }
+
+    fn host_session(&self, headers: &axum::http::HeaderMap, room: &str, name: &str) -> Option<SharedRoom> {
+        self.by_session(headers, room, name)
+            .and_then(|(room, role)| (role == Role::Host).then_some(room))
     }
 }
 
@@ -149,25 +176,31 @@ async fn main() {
     let turn = live::Turn::start()
         .await
         .unwrap_or_else(|e| panic!("cannot start TURN: {e}"));
+    let keys = session::Keys::load_or_create(&data).unwrap_or_else(|e| panic!("cannot read the session key: {e}"));
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
         rooms: Mutex::new(rooms),
         data: data.clone(),
         backoffice_token,
+        keys,
         turn,
     });
-    let link = format!("/backoffice/{}", state.backoffice_token);
     let live_info = state.turn.as_ref().map(live::Turn::describe);
 
-    let api = "/api/backoffice/{token}/rooms";
+    let api = "/api/backoffice/rooms";
     let app = Router::new()
         .route("/ws", get(ws::ws_handler))
         .route("/takes/{take}/uploads", post(tus::create))
         .route("/uploads/{id}", axum::routing::head(tus::head).patch(tus::patch))
         .route("/takes/{take}/zip", get(download::take_zip))
         .route("/takes/{take}/tracks/{file}", get(download::track))
-        .route("/backoffice/{token}", get(client_files::backoffice))
+        .route("/api/session", post(ws::join))
+        .route("/backoffice", get(client_files::backoffice))
+        .route(
+            "/api/backoffice/session",
+            post(backoffice::sign_in).delete(backoffice::sign_out),
+        )
         .route(api, get(backoffice::list).post(backoffice::create_room))
         .route(
             &format!("{api}/{{id}}/invitations"),
@@ -197,9 +230,9 @@ async fn main() {
         None => println!("  live conversation: no STUN/TURN (set TURN_PUBLIC_IP); only direct connections"),
     }
     if secret {
-        println!("  backoffice: /backoffice/<BACKOFFICE_TOKEN>");
+        println!("  backoffice: /backoffice, signing in with BACKOFFICE_TOKEN");
     } else {
-        println!("  backoffice: {link}  (set BACKOFFICE_TOKEN to make it secret)");
+        println!("  backoffice: /backoffice, signing in with admin  (set BACKOFFICE_TOKEN to make it secret)");
     }
     axum::serve(listener, app).await.unwrap();
 }

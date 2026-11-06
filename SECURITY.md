@@ -4,4 +4,4 @@ Please **do not open a public issue** for a vulnerability. Report it privately t
 
 Only the latest release is supported: fixes go into a new release, not into old ones.
 
-When you run your own instance, keep `BACKOFFICE_TOKEN` secret and long (`openssl rand -hex 16`): anyone with the backoffice link can create Rooms and download every recording.
+When you run your own instance, keep `BACKOFFICE_TOKEN` secret and long (`openssl rand -hex 16`): anyone with it can sign in to the backoffice, create Rooms and download every recording.

@@ -16,16 +16,18 @@ use tokio::sync::mpsc;
 use tower_http::services::ServeFile;
 
 use crate::AppState;
-use crate::ws::WsParams;
+use crate::ws::SessionQuery;
 
 /// Host only: one received Track.
 pub async fn track(
     Path((take, file)): Path<(u32, String)>,
-    Query(params): Query<WsParams>,
+    Query(q): Query<SessionQuery>,
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, StatusCode> {
-    let shared = state.host_room(&params.invite).ok_or(StatusCode::FORBIDDEN)?;
+    let shared = state
+        .host_session(request.headers(), &q.room, &q.name)
+        .ok_or(StatusCode::FORBIDDEN)?;
     // Only files listed for the Take are served, so the URL cannot reach anything else on disk.
     let path = {
         let room = shared.lock().unwrap();
@@ -52,10 +54,13 @@ pub async fn track(
 /// Host only: every Track of a Take received so far, with `room.json`.
 pub async fn take_zip(
     Path(take): Path<u32>,
-    Query(params): Query<WsParams>,
+    Query(q): Query<SessionQuery>,
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Response, StatusCode> {
-    let shared = state.host_room(&params.invite).ok_or(StatusCode::FORBIDDEN)?;
+    let shared = state
+        .host_session(&headers, &q.room, &q.name)
+        .ok_or(StatusCode::FORBIDDEN)?;
     let room = shared.lock().unwrap();
     if take == 0 || take > room.take_count() {
         return Err(StatusCode::NOT_FOUND);
@@ -130,23 +135,28 @@ impl Write for ChannelWriter {
 mod tests {
     use super::*;
     use crate::protocol::Role;
-    use crate::{Coordinator, Room, tus};
+    use crate::{Coordinator, Room, session, tus};
     use std::sync::{Arc, Mutex};
 
-    async fn get(state: &AppState, host: &str, file: &str, range: Option<&str>) -> Response {
-        let mut req = Request::builder().uri(format!("/takes/1/tracks/{file}"));
+    /// GET a Track as `name`, with a session cookie signed by `keys`.
+    async fn get(state: &AppState, keys: &session::Keys, name: &str, file: &str, range: Option<&str>) -> Response {
+        let cookie = format!(
+            "{}={}",
+            session::participant_cookie("r_2026-11-06", name),
+            keys.sign(&format!("r_2026-11-06/{name}"), 60)
+        );
+        let mut req = Request::builder()
+            .uri(format!("/takes/1/tracks/{file}"))
+            .header(header::COOKIE, cookie);
         if let Some(r) = range {
             req = req.header(header::RANGE, r);
         }
-        let params = WsParams { invite: host.into() };
-        match track(
-            Path((1, file.into())),
-            Query(params),
-            State(state.clone()),
-            req.body(Body::empty()).unwrap(),
-        )
-        .await
-        {
+        let q = SessionQuery {
+            room: "r_2026-11-06".into(),
+            name: name.into(),
+        };
+        let request = req.body(Body::empty()).unwrap();
+        match track(Path((1, file.into())), Query(q), State(state.clone()), request).await {
             Ok(r) => r,
             Err(status) => status.into_response(),
         }
@@ -160,19 +170,21 @@ mod tests {
         std::fs::write(dir.join("secret.txt"), b"no").unwrap();
         let mut room = Room::new("r_2026-11-06".into(), "r".into(), dir.clone());
         room.invite("host", Role::Host).unwrap();
+        room.invite("ana", Role::Guest).unwrap();
         room.start_take();
         let saved = r#"{"participant":"ana","part":1,"file":"t01_ana.ogg","complete":true,"bytes":10,"startTime":0,"sampleRate":48000}"#;
         room.uploads
             .push(tus::Upload::from_file(1, serde_json::from_str(saved).unwrap()));
-        let host = room.participants[0].token.clone();
         let state: AppState = Arc::new(Coordinator {
             rooms: Mutex::new(vec![Arc::new(Mutex::new(room))]),
             data: dir.clone(),
             backoffice_token: "admin".into(),
+            keys: session::Keys::new(b"test"),
             turn: None,
         });
+        let keys = session::Keys::new(b"test");
 
-        let part = get(&state, &host, "t01_ana.ogg", Some("bytes=0-3")).await;
+        let part = get(&state, &keys, "host", "t01_ana.ogg", Some("bytes=0-3")).await;
         assert_eq!(part.status(), StatusCode::PARTIAL_CONTENT);
         assert_eq!(part.headers()[header::CONTENT_TYPE], "audio/ogg");
         assert_eq!(
@@ -182,11 +194,17 @@ mod tests {
         let body = axum::body::to_bytes(part.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], b"OggS");
         assert_eq!(
-            get(&state, &host, "secret.txt", None).await.status(),
+            get(&state, &keys, "host", "secret.txt", None).await.status(),
             StatusCode::NOT_FOUND
         );
+        // A Guest, or a cookie signed with another key, gets nothing.
         assert_eq!(
-            get(&state, "guest", "t01_ana.ogg", None).await.status(),
+            get(&state, &keys, "ana", "t01_ana.ogg", None).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        let forged = session::Keys::new(b"forged");
+        assert_eq!(
+            get(&state, &forged, "host", "t01_ana.ogg", None).await.status(),
             StatusCode::FORBIDDEN
         );
         std::fs::remove_dir_all(dir).unwrap();

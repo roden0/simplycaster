@@ -1,33 +1,55 @@
 //! The WebSocket of each Participant: the roster, the Takes, the clock, drift marks and live signalling.
 
 use axum::{
+    Json,
     extract::{
         Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use crate::protocol::{ClientMessage, IceServer, ServerMessage};
+use crate::protocol::{ClientMessage, IceServer, Join, ServerMessage, Session};
+use crate::session;
 use crate::{AppState, MAX_WS_MESSAGE_BYTES, SharedRoom, live, now_ms};
 
 #[derive(Deserialize)]
-pub struct WsParams {
-    pub invite: String,
+/// Which Participant session a request uses; the cookie of that name proves it (ADR-0009).
+pub struct SessionQuery {
+    pub room: String,
+    pub name: String,
+}
+
+/// Exchanges an Invitation for the session cookie of its Participant. Called on every page load, so
+/// reopening the link renews the session; returns the query that `/ws` and the downloads take.
+pub async fn join(State(state): State<AppState>, Json(req): Json<Join>) -> Response {
+    let Some((room, name, _)) = state.by_invite(&req.invite) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let room = room.lock().unwrap().id.clone();
+    let jwt = state.keys.sign(&format!("{room}/{name}"), session::PARTICIPANT_SECONDS);
+    let cookie = session::set_cookie(
+        &session::participant_cookie(&room, &name),
+        &jwt,
+        session::PARTICIPANT_SECONDS,
+    );
+    ([(header::SET_COOKIE, cookie)], Json(Session { room, name })).into_response()
 }
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
-    Query(params): Query<WsParams>,
+    Query(q): Query<SessionQuery>,
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Response {
-    let Some((room, name, _)) = state.by_invite(&params.invite) else {
+    let Some((room, _)) = state.by_session(&headers, &q.room, &q.name) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let name = q.name;
     let ice_servers = state.turn.as_ref().map(live::Turn::ice_servers).unwrap_or_default();
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)

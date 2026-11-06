@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  // The Room page (/i/<token>) and the backoffice (/backoffice/<token>).
+  // The Room page (/i/<token>) and the backoffice (/backoffice).
   input: {
     main: resolve(import.meta.dirname, "index.html"),
     backoffice: resolve(import.meta.dirname, "backoffice.html"),
