@@ -99,7 +99,10 @@ pub fn zip_response(entries: Vec<(String, PathBuf)>, download_name: String) -> R
     (
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),
-            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{download_name}\"")),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{download_name}\""),
+            ),
         ],
         Body::from_stream(stream),
     )
