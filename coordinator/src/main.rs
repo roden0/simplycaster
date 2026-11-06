@@ -1,4 +1,5 @@
 mod backoffice;
+mod client_files;
 mod download;
 mod flac;
 mod live;
@@ -21,10 +22,7 @@ use axum::{
     Router,
     routing::{get, post},
 };
-use tower_http::{
-    services::{ServeDir, ServeFile},
-    set_header::SetResponseHeaderLayer,
-};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use room::{Room, track_stem};
 
@@ -133,12 +131,6 @@ fn backoffice_token(token: Option<String>, ip: IpAddr) -> Result<String, String>
 
 #[tokio::main]
 async fn main() {
-    // shortcut: static files are read from disk next to the repo; embed them in the binary before distributing.
-    let dist = std::env::var("CLIENT_DIST")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../client/dist"));
-    let static_files = ServeDir::new(&dist).fallback(ServeFile::new(dist.join("index.html")));
-
     let data = std::env::var("DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("data"));
@@ -175,7 +167,7 @@ async fn main() {
         .route("/uploads/{id}", axum::routing::head(tus::head).patch(tus::patch))
         .route("/takes/{take}/zip", get(download::take_zip))
         .route("/takes/{take}/tracks/{file}", get(download::track))
-        .route_service("/backoffice/{token}", ServeFile::new(dist.join("backoffice.html")))
+        .route("/backoffice/{token}", get(client_files::backoffice))
         .route(api, get(backoffice::list).post(backoffice::create_room))
         .route(
             &format!("{api}/{{id}}/invitations"),
@@ -185,7 +177,7 @@ async fn main() {
         .route(&format!("{api}/{{id}}/zip"), get(backoffice::zip))
         .route(&format!("{api}/{{id}}/flac"), post(backoffice::convert_flac))
         .route(&format!("{api}/{{id}}/flac/zip"), get(backoffice::flac_zip))
-        .fallback_service(static_files)
+        .fallback(client_files::fallback)
         // Revalidate on every load so a new build is never hidden behind a cached index.html.
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
