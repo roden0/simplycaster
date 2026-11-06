@@ -1,5 +1,9 @@
 // Backoffice (CU1, CU2, CU8, CU9): create Rooms and Invitations, close and download Rooms.
-import { t, type MessageKey } from "./i18n.ts";
+import { applyLocale, ROLE_LABEL, STATUS_LABEL, t, type MessageKey } from "./i18n.ts";
+
+/** Same as the Coordinator's MAX_PARTICIPANTS. */
+// shortcut: repeated by hand; send it from the Coordinator if it ever becomes configurable.
+const MAX_PARTICIPANTS = 5;
 import { el } from "./dom.ts";
 import type { RoomView } from "./protocol/RoomView.ts";
 import type { BackofficeError } from "./protocol/BackofficeError.ts";
@@ -17,6 +21,7 @@ const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   open: "errorOpen",
 };
 
+applyLocale();
 document.title = t("backofficeTitle");
 app.append(el("h1", t("backofficeTitle")), el("small", t("buildInfo", { build: __BUILD_TIME__ })));
 const error = el("p");
@@ -34,7 +39,7 @@ async function call(path: string, body?: object): Promise<RoomView | RoomView[] 
   if (res.ok) return res.json();
   const reason: BackofficeError | undefined = await res.json().catch(() => undefined);
   error.textContent =
-    res.status === 404 && !path ? t("backofficeInvalidLink") : reason ? t(ERROR_KEY[reason]) : t("requestFailed", { status: res.status });
+    res.status === 404 && !path ? t("backofficeInvalidLink") : reason ? t(ERROR_KEY[reason], { max: MAX_PARTICIPANTS }) : t("requestFailed", { status: res.status });
 }
 
 function field(label: string, value = "") {
@@ -92,7 +97,7 @@ function renderRoom(room: RoomView): HTMLElement {
       : t("roomOpen");
   section.append(
     el("h3", t("roomHeading", { name: room.name, created: createdText(room) })),
-    el("p", `${state} · ${t("roomTakes", { takes: room.takes })}`),
+    el("p", t("roomSummary", { state, takes: t("roomTakes", { takes: room.takes }) })),
   );
 
   const list = el("ul");
@@ -101,8 +106,8 @@ function renderRoom(room: RoomView): HTMLElement {
       "li",
       t("invitationEntry", {
         name: inv.name,
-        role: t(inv.role === "host" ? "roleHost" : "roleGuest"),
-        status: t(inv.status === "connected" ? "statusConnected" : "statusDisconnected"),
+        role: t(ROLE_LABEL[inv.role]),
+        status: t(STATUS_LABEL[inv.status]),
       }),
     );
     if (!room.closed) {

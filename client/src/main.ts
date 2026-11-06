@@ -1,4 +1,4 @@
-import { t, type MessageKey } from "./i18n.ts";
+import { applyLocale, list, ROLE_LABEL, STATUS_LABEL, t, type MessageKey } from "./i18n.ts";
 import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
 import { createRecorder, type MicState, type Recorder, type WorkerEvent } from "./recorder.ts";
@@ -28,6 +28,7 @@ const PENDING_UPLOADS_KEY = "simplycaster.pendingUploads";
 const app = document.querySelector<HTMLElement>("#app")!;
 const invite = location.pathname.match(/^\/i\/([^/]+)$/)?.[1];
 
+applyLocale();
 document.title = t("appTitle");
 app.append(el("h1", t("appTitle")));
 app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
@@ -118,7 +119,7 @@ function connect(invite: string) {
         myName = msg.name;
         status.textContent = t("joinedAs", {
           name: msg.name,
-          role: t(msg.role === "host" ? "roleHost" : "roleGuest"),
+          role: t(ROLE_LABEL[msg.role]),
         });
         isHost = msg.role === "host";
         toneHz = msg.toneHz;
@@ -199,14 +200,16 @@ function renderRoster(participants: ParticipantView[]) {
         p.clockOffsetMs === null
           ? t("clockPending")
           : t("clockOffset", { offset: p.clockOffsetMs.toFixed(1), rtt: p.clockRttMs!.toFixed(1) });
-      const role = t(p.role === "host" ? "roleHost" : "roleGuest");
       const liveState = p.name === myName ? undefined : live?.state(p.name);
-      const state =
-        t(p.status === "connected" ? "statusConnected" : "statusDisconnected") +
-        (p.syncing ? ` · ${t("statusSyncing")}` : "") +
-        (p.micProblem ? ` · ⚠ ${t(MIC_PROBLEM_LABEL[p.micProblem])}` : "") +
-        (liveState && LIVE_LABEL[liveState] ? ` · ${t(LIVE_LABEL[liveState]!)}` : "");
-      return el("li", `${p.name} · ${role} · ${state}${p.status === "connected" ? ` · ${clock}` : ""}`);
+      const liveLabel = liveState && LIVE_LABEL[liveState];
+      const details = [
+        t(STATUS_LABEL[p.status]),
+        ...(p.syncing ? [t("statusSyncing")] : []),
+        ...(p.micProblem ? [t("micProblemEntry", { problem: t(MIC_PROBLEM_LABEL[p.micProblem]) })] : []),
+        ...(liveLabel ? [t(liveLabel)] : []),
+        ...(p.status === "connected" ? [clock] : []),
+      ];
+      return el("li", t("rosterEntry", { name: p.name, role: t(ROLE_LABEL[p.role]), details: list(details) }));
     }),
   );
 }
