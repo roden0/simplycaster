@@ -130,6 +130,24 @@ impl Upload {
         ogg_opus_duration_ms(&dir.join(self.file()))
     }
 
+    /// Whether a PATCH at `client_offset`, declaring `new_length` if any, may write now: one at a time,
+    /// exactly where the Coordinator is, and never past the declared or maximum length. A deferred
+    /// length is fixed by the first PATCH that declares it.
+    pub fn check_patch(&mut self, client_offset: u64, new_length: Option<u64>) -> Result<(), StatusCode> {
+        if self.busy || client_offset != self.offset {
+            return Err(StatusCode::CONFLICT);
+        }
+        match (self.length, new_length) {
+            (Some(a), Some(b)) if a != b => Err(StatusCode::BAD_REQUEST),
+            (_, Some(b)) if b > MAX_TRACK_BYTES || b < self.offset => Err(StatusCode::BAD_REQUEST),
+            (None, Some(b)) => {
+                self.length = Some(b);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     pub fn is_complete(&self) -> bool {
         self.length == Some(self.offset)
     }
@@ -278,14 +296,8 @@ pub async fn patch(Path(id): Path<String>, State(state): State<AppState>, header
         let Some(u) = room.uploads.iter_mut().find(|u| u.id == id && u.participant == name) else {
             return tus(StatusCode::NOT_FOUND);
         };
-        if u.busy || client_offset != u.offset {
-            return tus(StatusCode::CONFLICT);
-        }
-        match (u.length, new_length) {
-            (Some(a), Some(b)) if a != b => return tus(StatusCode::BAD_REQUEST),
-            (_, Some(b)) if b > MAX_TRACK_BYTES || b < u.offset => return tus(StatusCode::BAD_REQUEST),
-            (None, Some(b)) => u.length = Some(b),
-            _ => {}
+        if let Err(status) = u.check_patch(client_offset, new_length) {
+            return tus(status);
         }
         u.busy = true;
         (dir.join(format!("{id}.ogg")), u.offset, u.length)
@@ -429,63 +441,171 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
-    #[tokio::test]
-    async fn a_patch_cancelled_mid_body_does_not_lock_the_upload() {
+    /// A Room recording Take 1, with Ana and Bea invited; returns their Invitation tokens.
+    fn studio() -> (AppState, std::path::PathBuf, String, String) {
         use crate::{Coordinator, Role, Room};
         use std::sync::{Arc, Mutex};
-
         let dir = std::env::temp_dir().join(crate::random_token());
         std::fs::create_dir_all(&dir).unwrap();
         let mut room = Room::new("r_2026-11-06".into(), "r".into(), dir.clone());
         room.invite("ana", Role::Guest).unwrap();
+        room.invite("bea", Role::Guest).unwrap();
         room.start_take();
-        let token = room.participants[0].token.clone();
-        let state: AppState = Arc::new(Coordinator {
+        let (ana, bea) = (room.participants[0].token.clone(), room.participants[1].token.clone());
+        let state = Arc::new(Coordinator {
             rooms: Mutex::new(vec![Arc::new(Mutex::new(room))]),
             data: dir.clone(),
             backoffice_token: "admin".into(),
             turn: None,
         });
-        let headers = |pairs: &[(&'static str, &str)]| {
-            let mut h = HeaderMap::new();
-            h.insert("X-Invite", token.parse().unwrap());
-            for (k, v) in pairs {
-                h.insert(*k, v.parse().unwrap());
-            }
-            h
-        };
+        (state, dir, ana, bea)
+    }
 
-        let created = create(
-            Path(1),
-            State(state.clone()),
-            headers(&[
-                ("Upload-Defer-Length", "1"),
-                ("X-Track-Start", "0"),
-                ("X-Sample-Rate", "48000"),
-            ]),
-        )
-        .await;
+    fn headers(token: &str, pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("X-Invite", token.parse().unwrap());
+        for (k, v) in pairs {
+            h.insert(*k, v.parse().unwrap());
+        }
+        h
+    }
+
+    const NEW_PART: [(&str, &str); 3] = [
+        ("Upload-Defer-Length", "1"),
+        ("X-Track-Start", "0"),
+        ("X-Sample-Rate", "48000"),
+    ];
+
+    /// Creates the next part of the Participant behind `token` and returns its upload id.
+    async fn new_part(state: &AppState, token: &str) -> String {
+        let created = create(Path(1), State(state.clone()), headers(token, &NEW_PART)).await;
         assert_eq!(created.status(), StatusCode::CREATED);
-        let id = created.headers()["Location"]
+        created.headers()["Location"]
             .to_str()
             .unwrap()
             .trim_start_matches("/uploads/")
-            .to_string();
-        let patch_headers = headers(&[
-            ("Content-Type", "application/offset+octet-stream"),
-            ("Upload-Offset", "0"),
-        ]);
+            .to_string()
+    }
+
+    fn patch_at(token: &str, offset: &str) -> HeaderMap {
+        headers(
+            token,
+            &[
+                ("Content-Type", "application/offset+octet-stream"),
+                ("Upload-Offset", offset),
+            ],
+        )
+    }
+
+    #[tokio::test]
+    async fn a_patch_cancelled_mid_body_does_not_lock_the_upload() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
 
         // The connection drops mid-body: the handler future is dropped while it waits for bytes.
         let stalled = Body::from_stream(futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>());
         let cut = std::time::Duration::from_millis(50);
-        let first = patch(Path(id.clone()), State(state.clone()), patch_headers.clone(), stalled);
+        let first = patch(Path(id.clone()), State(state.clone()), patch_at(&ana, "0"), stalled);
         assert!(tokio::time::timeout(cut, first).await.is_err());
 
         // The client resumes from offset 0, and must not get 409 forever.
-        let resumed = patch(Path(id), State(state), patch_headers, Body::from("OggS")).await;
+        let resumed = patch(Path(id), State(state), patch_at(&ana, "0"), Body::from("OggS")).await;
         assert_eq!(resumed.status(), StatusCode::NO_CONTENT);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_upload_grows_and_completes_with_its_final_length() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        let first = patch(
+            Path(id.clone()),
+            State(state.clone()),
+            patch_at(&ana, "0"),
+            Body::from("Ogg"),
+        )
+        .await;
+        assert_eq!(first.headers()["Upload-Offset"], "3");
+        // A retry of a PATCH that already arrived is refused: the client asks HEAD and resumes.
+        let again = patch(
+            Path(id.clone()),
+            State(state.clone()),
+            patch_at(&ana, "0"),
+            Body::from("Ogg"),
+        )
+        .await;
+        assert_eq!(again.status(), StatusCode::CONFLICT);
+        let mut last = patch_at(&ana, "3");
+        last.insert("Upload-Length", "4".parse().unwrap());
+        let done = patch(Path(id.clone()), State(state.clone()), last, Body::from("S")).await;
+        assert_eq!(done.status(), StatusCode::NO_CONTENT);
+        assert_eq!(std::fs::read(dir.join(format!("{id}.ogg"))).unwrap(), b"OggS");
+        let saved = crate::room_file::RoomFile::read(&dir).unwrap();
+        assert!(saved.takes[0].tracks[0].complete);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn nobody_touches_the_upload_of_another_participant() {
+        let (state, dir, ana, bea) = studio();
+        let id = new_part(&state, &ana).await;
+        let head = head(Path(id.clone()), State(state.clone()), headers(&bea, &[])).await;
+        assert_eq!(head.status(), StatusCode::NOT_FOUND);
+        let write = patch(Path(id), State(state.clone()), patch_at(&bea, "0"), Body::from("x")).await;
+        assert_eq!(write.status(), StatusCode::NOT_FOUND);
+        let stranger = create(Path(1), State(state), headers("not-an-invitation", &NEW_PART)).await;
+        assert_eq!(stranger.status(), StatusCode::FORBIDDEN);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_closed_room_receives_nothing_more() {
+        let (state, dir, ana, _) = studio();
+        let id = new_part(&state, &ana).await;
+        {
+            let rooms = state.rooms.lock().unwrap();
+            let mut room = rooms[0].lock().unwrap();
+            room.stop_take();
+            room.close().unwrap();
+        }
+        let write = patch(Path(id), State(state.clone()), patch_at(&ana, "0"), Body::from("x")).await;
+        assert_eq!(write.status(), StatusCode::FORBIDDEN);
+        let more = create(Path(1), State(state), headers(&ana, &NEW_PART)).await;
+        assert_eq!(more.status(), StatusCode::FORBIDDEN);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_track_cannot_exceed_the_maximum_size() {
+        let (state, dir, ana, _) = studio();
+        let too_big = (MAX_TRACK_BYTES + 1).to_string();
+        let mut big = headers(&ana, &NEW_PART);
+        big.remove("Upload-Defer-Length");
+        big.insert("Upload-Length", too_big.parse().unwrap());
+        assert_eq!(
+            create(Path(1), State(state), big).await.status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_patch_writes_only_where_and_as_much_as_allowed() {
+        let mut u = part(&[]);
+        u.length = None;
+        u.offset = 10;
+        assert_eq!(u.check_patch(0, None), Err(StatusCode::CONFLICT));
+        assert_eq!(u.check_patch(10, Some(5)), Err(StatusCode::BAD_REQUEST));
+        assert_eq!(
+            u.check_patch(10, Some(MAX_TRACK_BYTES + 1)),
+            Err(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(u.check_patch(10, None), Ok(()));
+        assert_eq!(u.check_patch(10, Some(20)), Ok(()));
+        assert_eq!(u.length, Some(20));
+        assert_eq!(u.check_patch(10, Some(30)), Err(StatusCode::BAD_REQUEST));
+        u.busy = true;
+        assert_eq!(u.check_patch(10, None), Err(StatusCode::CONFLICT));
     }
 
     #[test]
