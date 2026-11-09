@@ -3,7 +3,7 @@
 
 services:
   simplycaster:
-    image: ghcr.io/roden0/simplycaster:0.2.0
+    image: ghcr.io/roden0/simplycaster:0.3.0
     restart: unless-stopped
     environment:
       BACKOFFICE_TOKEN: ${BACKOFFICE_TOKEN:?set BACKOFFICE_TOKEN in .env}
