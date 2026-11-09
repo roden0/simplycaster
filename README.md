@@ -98,6 +98,10 @@ Avoid `latest`: pin a version and upgrade when you choose to.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). To report a security issue, see [SECURITY.md](SECURITY.md).
 
+## Supporting the project
+
+SimplyCaster is free software. If it is useful to you, you can support its development on [Liberapay](https://liberapay.com/roencinas/).
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE). If you run a modified version as a service for others, you must offer them its source code.
