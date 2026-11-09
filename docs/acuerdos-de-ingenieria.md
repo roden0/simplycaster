@@ -54,7 +54,7 @@ Cómo trabajamos en SimplyCaster. Salen de lo que el código ya hace bien y de l
 - Los nombres de fichero se construyen en el Coordinador a partir de nombres validados (`valid_name`); nunca se toma una ruta del cliente. Solo se sirven ficheros listados en la Sala. Así es hoy.
 - Toda entrada externa tiene un límite de tamaño: la Pista (`MAX_TRACK_BYTES`), la señal, el mensaje del WebSocket y el número de partes.
 - Secretos de 128 bits aleatorios. Sin `BACKOFFICE_TOKEN`, el Coordinador solo arranca en loopback (falla cerrado).
-- Ninguna URL lleva un secreto, salvo el enlace de Invitación. El backoffice y los Participantes cambian su secreto por una cookie de sesión firmada, y el extractor `Admin` la exige en cada handler del backoffice ([ADR-0009](adr/0009-sesiones-con-cookie-firmada.md)).
+- Ninguna URL lleva un secreto, salvo el enlace de Invitación. El backoffice y los Participantes cambian su secreto por una cookie de sesión firmada, y los extractores `SignedIn` y `Admin` la exigen en cada handler del backoffice ([ADR-0009](adr/0009-sesiones-con-cookie-firmada.md), [ADR-0011](adr/0011-cuentas-con-passkeys.md)). Los enlaces de alta van en el fragmento, que no llega a ningún servidor.
 - Las herramientas externas (FFmpeg) se lanzan con argumentos, nunca a través de una shell.
 
 ## `shortcut:`

@@ -6,7 +6,15 @@ export type RoomView = {
 /**
  * `<name>_<date>`: the Room folder and the prefix of every file in it.
  */
-id: string, name: string, 
+id: string, 
+/**
+ * The slug: lowercase letters, digits and dashes.
+ */
+name: string, 
+/**
+ * What the creator typed, to organize their Rooms; the slug for Rooms older than it.
+ */
+displayName: string, 
 /**
  * Creation date, `YYYY-MM-DD` (UTC).
  */

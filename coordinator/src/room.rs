@@ -49,7 +49,13 @@ impl Participant {
 pub(crate) struct Room {
     /// `<name>_<date>`: the folder name and the prefix of every file in it.
     pub(crate) id: String,
+    /// The slug.
     pub(crate) name: String,
+    pub(crate) display_name: Option<String>,
+    /// Not used as a key yet (ADR-0011).
+    pub(crate) uuid: Option<String>,
+    /// The Account that created it, which is all a Room knows of Accounts.
+    pub(crate) creator: Option<String>,
     pub(crate) created: String,
     pub(crate) created_at: Option<f64>,
     /// Closed Rooms are immutable and their Invitations have expired (CU8, ADR-0002).
@@ -76,6 +82,9 @@ impl Room {
         Room {
             id,
             name,
+            display_name: None,
+            uuid: None,
+            creator: None,
             created: utc_date(now_ms()),
             created_at: Some(now_ms()),
             closed: false,
@@ -137,6 +146,9 @@ impl Room {
         let id = dir.file_name().unwrap().to_string_lossy().into_owned();
         let mut room = Room::new(id.clone(), saved.room.unwrap_or(id), dir);
         room.closed = invitations.is_none();
+        room.display_name = saved.display_name;
+        room.uuid = saved.uuid;
+        room.creator = saved.creator;
         room.created = saved
             .created
             .or_else(|| saved.takes.first().map(|t| utc_date(t.start_time)))
@@ -520,6 +532,7 @@ impl Room {
         RoomView {
             id: self.id.clone(),
             name: self.name.clone(),
+            display_name: self.display_name.clone().unwrap_or_else(|| self.name.clone()),
             created: self.created.clone(),
             created_at: self.created_at,
             closed: self.closed,
@@ -568,14 +581,19 @@ impl Room {
                 role: p.view.role,
             })
             .collect();
-        let file = RoomFile::new(
-            &self.name,
-            &self.created,
-            self.created_at,
-            self.closed,
-            participants,
-            takes,
-        );
+        let file = RoomFile {
+            display_name: self.display_name.clone(),
+            uuid: self.uuid.clone(),
+            creator: self.creator.clone(),
+            ..RoomFile::new(
+                &self.name,
+                &self.created,
+                self.created_at,
+                self.closed,
+                participants,
+                takes,
+            )
+        };
         if let Err(e) = file.write(&self.dir) {
             eprintln!("{}: cannot write room.json: {e}", self.id);
         }

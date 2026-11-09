@@ -468,6 +468,10 @@ mod tests {
             backoffice_token: "admin".into(),
             keys: crate::session::Keys::new(b"test"),
             turn: None,
+            accounts: crate::accounts::Accounts::load_or_create(&dir).unwrap(),
+            webauthn: None,
+            logins: Default::default(),
+            registrations: Default::default(),
         });
         (state, dir, ana, bea)
     }

@@ -23,4 +23,4 @@ fail() {
 restic cat config > /dev/null 2>&1 || restic init || fail "creating the repository"
 restic backup --host "$(hostname)" --tag simplycaster "$DATA_DIR" || fail "the backup"
 # shellcheck disable=SC2086 # KEEP holds several flags
-restic forget --prune ${KEEP:---keep-daily 7 --keep-weekly 4 --keep-monthly 6} || fail "pruning"
+restic forget --prune ${KEEP:---keep-daily 7 --keep-weekly 4} || fail "pruning"

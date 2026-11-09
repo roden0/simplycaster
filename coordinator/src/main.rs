@@ -1,3 +1,5 @@
+mod accounts;
+mod accounts_api;
 mod backoffice;
 mod client_files;
 mod download;
@@ -37,6 +39,9 @@ const MAX_SIGNAL_BYTES: usize = 64 << 10;
 /// Largest WebSocket message: a signal plus its JSON envelope. tungstenite's default is 64 MiB.
 const MAX_WS_MESSAGE_BYTES: usize = 2 * MAX_SIGNAL_BYTES;
 
+/// What `openssl rand -hex 16` gives: 128 random bits.
+const MIN_TOKEN_CHARS: usize = 32;
+
 /// Every Room folder in `data` with a `room.json`, oldest first.
 fn load_rooms(data: &std::path::Path) -> Vec<SharedRoom> {
     let mut rooms: Vec<Room> = std::fs::read_dir(data)
@@ -65,6 +70,11 @@ pub struct Coordinator {
     keys: session::Keys,
     /// STUN/TURN for the live conversation (ADR-0005); `None` when not configured.
     turn: Option<live::Turn>,
+    accounts: accounts::Accounts,
+    /// `None` without `PUBLIC_URL`: only the token works, and recording does not depend on it.
+    webauthn: Option<webauthn_rs::prelude::Webauthn>,
+    logins: accounts_api::Logins,
+    registrations: accounts_api::Registrations,
 }
 
 type AppState = Arc<Coordinator>;
@@ -146,10 +156,14 @@ fn utc_date(ms: f64) -> String {
 
 /// The backoffice secret. Without `BACKOFFICE_TOKEN` it is the guessable `admin`, allowed only on loopback:
 /// listening anywhere else, the Coordinator refuses to start rather than expose the backoffice (ADR-0006 A3).
+/// There, a short token is refused too: signing in has no limit of attempts, so its length is the defence.
 fn backoffice_token(token: Option<String>, ip: IpAddr) -> Result<String, String> {
     // Empty counts as unset: docker-compose passes `BACKOFFICE_TOKEN=` when .env leaves it blank.
     match token.filter(|t| !t.is_empty()) {
-        Some(t) => Ok(t),
+        Some(t) if ip.is_loopback() || t.len() >= MIN_TOKEN_CHARS => Ok(t),
+        Some(_) => Err(format!(
+            "BACKOFFICE_TOKEN needs at least {MIN_TOKEN_CHARS} characters; generate one with: openssl rand -hex 16"
+        )),
         None if ip.is_loopback() => Ok("admin".into()),
         None => Err(format!(
             "BACKOFFICE_TOKEN is required when listening on {ip}; generate one with: openssl rand -hex 16"
@@ -182,6 +196,17 @@ async fn main() {
         .await
         .unwrap_or_else(|e| panic!("cannot start TURN: {e}"));
     let keys = session::Keys::load_or_create(&data).unwrap_or_else(|e| panic!("cannot read the session key: {e}"));
+    let accounts =
+        accounts::Accounts::load_or_create(&data).unwrap_or_else(|e| panic!("cannot read the Accounts: {e}"));
+    let public_url = std::env::var("PUBLIC_URL")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .or_else(|| ip.is_loopback().then(|| format!("http://localhost:{port}")));
+    let webauthn = public_url.as_deref().and_then(|url| {
+        accounts_api::webauthn(url)
+            .inspect_err(|e| eprintln!("passkeys are off: {e}"))
+            .ok()
+    });
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
@@ -190,7 +215,12 @@ async fn main() {
         backoffice_token,
         keys,
         turn,
+        accounts,
+        webauthn,
+        logins: Default::default(),
+        registrations: Default::default(),
     });
+    let passkeys = state.webauthn.is_some();
     let live_info = state.turn.as_ref().map(live::Turn::describe);
 
     let api = "/api/backoffice/rooms";
@@ -208,9 +238,30 @@ async fn main() {
         .route("/backoffice/{*old}", get(to_backoffice))
         .route(
             "/api/backoffice/session",
-            post(backoffice::sign_in).delete(backoffice::sign_out),
+            get(accounts_api::sign_in_options)
+                .post(accounts_api::sign_in)
+                .delete(accounts_api::sign_out),
+        )
+        .route("/api/backoffice/me", get(accounts_api::me))
+        .route("/api/backoffice/me/passkeys", post(accounts_api::passkey_start))
+        .route("/api/backoffice/passkeys", post(accounts_api::registration_finish))
+        .route("/api/backoffice/login", post(accounts_api::login_start))
+        .route("/api/backoffice/login/finish", post(accounts_api::login_finish))
+        .route("/api/backoffice/enrolment", post(accounts_api::enrolment_start))
+        .route(
+            "/api/backoffice/accounts",
+            get(accounts_api::list).post(accounts_api::create),
+        )
+        .route(
+            "/api/backoffice/accounts/{id}",
+            axum::routing::delete(accounts_api::delete),
+        )
+        .route(
+            "/api/backoffice/accounts/{id}/enrolment",
+            post(accounts_api::enrol_again),
         )
         .route(api, get(backoffice::list).post(backoffice::create_room))
+        .route(&format!("{api}/{{id}}"), axum::routing::delete(backoffice::delete_room))
         .route(
             &format!("{api}/{{id}}/invitations"),
             post(backoffice::create_invitation),
@@ -237,6 +288,9 @@ async fn main() {
     match live_info {
         Some(t) => println!("  live conversation: {t}"),
         None => println!("  live conversation: no STUN/TURN (set TURN_PUBLIC_IP); only direct connections"),
+    }
+    if !passkeys {
+        println!("  passkeys: off (set PUBLIC_URL); the backoffice only takes the token");
     }
     if secret {
         println!("  backoffice: /backoffice, signing in with BACKOFFICE_TOKEN");
@@ -265,6 +319,9 @@ mod tests {
         assert_eq!(backoffice_token(None, "::1".parse().unwrap()).unwrap(), "admin");
         assert!(backoffice_token(None, any).is_err());
         assert!(backoffice_token(Some(String::new()), any).is_err());
-        assert_eq!(backoffice_token(Some("s3cret".into()), any).unwrap(), "s3cret");
+        assert!(backoffice_token(Some("s3cret".into()), any).is_err());
+        assert_eq!(backoffice_token(Some("s3cret".into()), local).unwrap(), "s3cret");
+        let long = "a".repeat(MIN_TOKEN_CHARS);
+        assert_eq!(backoffice_token(Some(long.clone()), any).unwrap(), long);
     }
 }

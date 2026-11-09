@@ -149,7 +149,7 @@ pub enum ServerMessage {
     },
 }
 
-// --- Backoffice (CU1, CU2, CU8, CU9): JSON over HTTP, behind the backoffice link ---
+// --- Backoffice (CU1, CU2, CU8, CU9): JSON over HTTP, for signed-in Accounts ---
 
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -169,7 +169,10 @@ pub struct InvitationView {
 pub struct RoomView {
     /// `<name>_<date>`: the Room folder and the prefix of every file in it.
     pub id: String,
+    /// The slug: lowercase letters, digits and dashes.
     pub name: String,
+    /// What the creator typed, to organize their Rooms; the slug for Rooms older than it.
+    pub display_name: String,
     /// Creation date, `YYYY-MM-DD` (UTC).
     pub created: String,
     /// Exact creation instant, ms since the Unix epoch, shown in the viewer's local time.
@@ -196,7 +199,7 @@ pub enum FlacState {
     Failed,
 }
 
-/// Signs in to the backoffice with `BACKOFFICE_TOKEN`, for a session cookie (ADR-0009).
+/// Signs in as the initial Admin with `BACKOFFICE_TOKEN`, for a session cookie (ADR-0009, ADR-0011).
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct SignIn {
@@ -223,6 +226,7 @@ pub struct Session {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct CreateRoom {
+    /// Free text; the Room's slug is derived from it.
     pub name: String,
     /// Fixed name of the Host, who gets the first Invitation.
     pub host: String,
@@ -247,8 +251,106 @@ pub enum BackofficeError {
     /// Stop the Take before closing the Room.
     Recording,
     Closed,
-    /// Downloads and FLAC need a closed Room.
+    /// Downloads, FLAC and deleting need a closed Room.
     Open,
+    /// A Room cannot be deleted while its files are being converted.
+    Converting,
+    InvalidEmail,
+    EmailTaken,
+    /// Another Admin able to sign in must remain.
+    LastAdmin,
+    /// The enrolment link does not exist, was used or expired.
+    InvalidEnrolment,
+    /// `PUBLIC_URL` is not set, or too many sign-ins are under way.
+    PasskeysUnavailable,
+    /// The change could not be written to disk.
+    NotSaved,
+}
+
+// --- Accounts (ADR-0011) ---
+
+/// What an Account may do across the instance; not to be confused with `Role`, inside a Room.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AccountRole {
+    Host,
+    Admin,
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AccountView {
+    pub id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub role: AccountRole,
+    /// The initial Admin, who signs in with `BACKOFFICE_TOKEN`.
+    pub initial: bool,
+    pub passkeys: u32,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct Me {
+    pub name: String,
+    pub role: AccountRole,
+    pub initial: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct SignInOptions {
+    /// The initial Admin still exists, so `BACKOFFICE_TOKEN` works.
+    pub token: bool,
+    pub passkeys: bool,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct CreateAccount {
+    pub name: String,
+    pub email: String,
+    pub role: AccountRole,
+}
+
+/// Secret of the link `/backoffice#enrol={token}`: one use, 72 h.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct EnrolmentLink {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct StartEnrolment {
+    pub token: String,
+}
+
+/// A passkey ceremony under way; `options` are the browser's `publicKey` options, as JSON.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct PasskeyChallenge {
+    pub ceremony: String,
+    #[ts(type = "unknown")]
+    pub options: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct FinishLogin {
+    pub ceremony: String,
+    #[ts(type = "unknown")]
+    pub credential: webauthn_rs::prelude::PublicKeyCredential,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct FinishRegistration {
+    pub ceremony: String,
+    #[ts(type = "unknown")]
+    pub credential: webauthn_rs::prelude::RegisterPublicKeyCredential,
 }
 
 /// Shaped like the browser's `RTCIceServer`.

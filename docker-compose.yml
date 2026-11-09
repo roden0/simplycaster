@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       BACKOFFICE_TOKEN: ${BACKOFFICE_TOKEN:?set BACKOFFICE_TOKEN in .env}
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
       TURN_PUBLIC_IP: ${TURN_PUBLIC_IP:-}
       TURN_PORT: ${TURN_PORT:-3478}
       TURN_RELAY_PORTS: ${TURN_RELAY_PORTS:-49160-49199}
@@ -47,7 +48,7 @@ services:
         restic cat config > /dev/null 2>&1 || restic init
         while true; do
           restic backup --host simplycaster /data &&
-            restic forget --prune $${BACKUP_KEEP:---keep-daily 7 --keep-weekly 4 --keep-monthly 6}
+            restic forget --prune $${BACKUP_KEEP:---keep-daily 7 --keep-weekly 4}
           sleep $${BACKUP_EVERY_SECONDS:-86400}
         done
 
