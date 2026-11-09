@@ -21,6 +21,15 @@ pub struct RoomFile {
     pub note: String,
     /// Missing in 0a: the folder name stands in.
     pub room: Option<String>,
+    /// What the creator typed; the slug in `room` stands in for older Rooms.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Not used as a key yet (ADR-0011); older Rooms have none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    /// The Account that created the Room; older Rooms have none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator: Option<String>,
     /// `YYYY-MM-DD`; missing in 0a: the date of the first Take stands in.
     pub created: Option<String>,
     /// Saved since the time is shown; older Rooms only know their date.
@@ -97,7 +106,7 @@ pub fn read_invitations(dir: &Path) -> Option<Vec<InvitationFile>> {
 }
 
 pub fn write_invitations(dir: &Path, invitations: &[InvitationFile]) -> std::io::Result<()> {
-    write_atomic(
+    write_private(
         dir,
         INVITATIONS,
         &serde_json::to_vec_pretty(invitations).expect("always serializes"),
@@ -120,6 +129,27 @@ fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&tmp, dir.join(name))
 }
 
+/// Like `write_atomic`, for files that hold secrets or personal data: only the Coordinator may read them.
+pub fn write_private(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = dir.join(format!("{name}.tmp"));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(&tmp)?.write_all(bytes)?;
+    std::fs::rename(&tmp, dir.join(name))
+}
+
+/// Deletes a Room's folder. `room.json` goes first: a Room half deleted by a crash is not loaded again.
+pub fn remove_room(dir: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(dir.join(FILE))?;
+    std::fs::remove_dir_all(dir)
+}
+
 fn note() -> String {
     NOTE.into()
 }
@@ -136,6 +166,9 @@ impl RoomFile {
         RoomFile {
             note: note(),
             room: Some(room.into()),
+            display_name: None,
+            uuid: None,
+            creator: None,
             created: Some(created.into()),
             created_at,
             closed,

@@ -1,6 +1,6 @@
 //! Signed session cookies (ADR-0009). The backoffice token and the Invitation tokens are typed or opened
 //! once and exchanged for a cookie, so they no longer travel in the URLs that proxies log.
-//! A cookie holds a JWT (HS256) whose subject says who it is: `backoffice`, or `<room id>/<name>`.
+//! A cookie holds a JWT (HS256) whose subject says who it is: `account:<id>`, or `<room id>/<name>`.
 
 use std::path::Path;
 
@@ -8,9 +8,11 @@ use axum::http::{HeaderMap, HeaderValue, header};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
-pub const ADMIN_COOKIE: &str = "sc_admin";
-pub const ADMIN_SUBJECT: &str = "backoffice";
-pub const ADMIN_SECONDS: u64 = 12 * 3600;
+pub const ACCOUNT_COOKIE: &str = "sc_account";
+/// `:` cannot appear in a Room id, so an Account's subject never reads as a Participant's.
+pub const ACCOUNT_PREFIX: &str = "account:";
+/// Signing in again is one touch, and every request checks that the Account still exists (ADR-0011).
+pub const ACCOUNT_SECONDS: u64 = 7 * 24 * 3600;
 /// A Room may span days; reopening the Invitation link renews it anyway.
 pub const PARTICIPANT_SECONDS: u64 = 7 * 24 * 3600;
 const KEY_FILE: &str = "session.key";
@@ -130,9 +132,9 @@ mod tests {
     #[test]
     fn cookies_are_read_from_any_cookie_header() {
         let mut headers = HeaderMap::new();
-        headers.append(header::COOKIE, "a=1; sc_admin=xyz".parse().unwrap());
+        headers.append(header::COOKIE, "a=1; sc_account=xyz".parse().unwrap());
         headers.append(header::COOKIE, "sc_r.ana=abc".parse().unwrap());
-        assert_eq!(cookie(&headers, ADMIN_COOKIE), Some("xyz"));
+        assert_eq!(cookie(&headers, ACCOUNT_COOKIE), Some("xyz"));
         assert_eq!(cookie(&headers, &participant_cookie("r", "ana")), Some("abc"));
         assert_eq!(cookie(&headers, "sc_r.bea"), None);
     }

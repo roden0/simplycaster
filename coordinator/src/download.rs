@@ -181,6 +181,10 @@ mod tests {
             backoffice_token: "admin".into(),
             keys: session::Keys::new(b"test"),
             turn: None,
+            accounts: crate::accounts::Accounts::load_or_create(&dir).unwrap(),
+            webauthn: None,
+            logins: Default::default(),
+            registrations: Default::default(),
         });
         let keys = session::Keys::new(b"test");
 

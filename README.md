@@ -34,7 +34,9 @@ nano .env
 docker compose up -d
 ```
 
-Then open `https://<DOMAIN>/backoffice`, sign in with your `BACKOFFICE_TOKEN`, create a Room and send each Participant their link. Keep the token secret: whoever has it can create Rooms and download every recording. Each Invitation link is secret too, until its Room is closed.
+Then open `https://<DOMAIN>/backoffice` and sign in with your `BACKOFFICE_TOKEN` as the Initial Admin. Create an Admin Account for yourself and open its link to register a passkey; once that works, delete the Initial Admin and the token stops working. Hosts get their Accounts the same way: each sees and manages only the Rooms they created. Create a Room and send each Participant their link; Participants need no Account. Keep the token secret while it works: whoever has it can manage every Account and download every recording. Each enrolment and Invitation link is secret too.
+
+If no Admin can sign in any more, remove the Admins from `data/accounts.json` and restart: the Initial Admin comes back.
 
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
@@ -83,12 +85,14 @@ Avoid `latest`: pin a version and upgrade when you choose to.
 
 | Variable | Default | |
 |---|---|---|
-| `BACKOFFICE_TOKEN` | (required) | Secret part of the backoffice URL. |
+| `BACKOFFICE_TOKEN` | (required) | Credential of the Initial Admin, at least 32 characters. |
+| `PUBLIC_URL` | `https://<DOMAIN>` in Compose | Address people use, for passkeys, which belong to this domain: changing it means registering them again. Without it only the token works. |
 | `TURN_PUBLIC_IP` | empty | Public IPv4 for TURN. Empty: only direct connections. |
 | `TURN_PORT` | `3478` | STUN/TURN UDP port. |
 | `TURN_RELAY_PORTS` | `49160-49199` | UDP relay range. |
 | `DOMAIN` | (required) | Used by Caddy for HTTPS. |
 | `RESTIC_REPOSITORY`, `RESTIC_PASSWORD` | `/backups`, (required) | Backups, see above. |
+| `BACKUP_KEEP` | `--keep-daily 7 --keep-weekly 4` | How long backups last, about a month; deleted audio stays in them until then. |
 
 ## Contributing
 

@@ -1,5 +1,6 @@
 // Message catalog: `en` is the base locale. Add another locale as a `Catalog` (TypeScript then
 // reports any missing key) and list it in `catalogs`.
+import type { AccountRole } from "./protocol/AccountRole.ts";
 import type { ParticipantStatus } from "./protocol/ParticipantStatus.ts";
 import type { Role } from "./protocol/Role.ts";
 
@@ -67,15 +68,43 @@ const en = {
   trackPartEntry: "{file} ({mb} MB, starts {seconds} s after the Sync tone)",
   downloadAllZip: "Download all (zip)",
   backofficeTitle: "SimplyCaster backoffice",
-  backofficeToken: "Backoffice token",
+  backofficeToken: "Installation token",
   signIn: "Sign in",
+  signInPasskey: "Sign in with a passkey",
+  passkeysOff: "Passkeys are not available on this server: set PUBLIC_URL.",
+  passkeyCancelled: "The passkey request was cancelled or timed out. Try again.",
+  passkeyRefused: "That passkey was not accepted.",
+  enrolTitle: "Set up your access",
+  enrolHint: "Create a passkey to sign in from now on: your device keeps it, and you unlock it with your fingerprint, face or PIN.",
+  enrolButton: "Create passkey",
+  account: "Your account",
+  accountEntry: "{name} · {role} · {passkeys} passkeys",
+  accountEntryEmail: "{name} · {email} · {role} · {passkeys} passkeys",
+  addPasskey: "Add a passkey on this device",
+  passkeyAdded: "Passkey added.",
+  initialAdminName: "Initial Admin",
+  initialAdminHint: "You signed in with the installation token. Create an Admin with a passkey; once it is registered, delete this Initial Admin to retire the token.",
+  accounts: "Accounts",
+  newAccount: "New Account",
+  accountName: "Name",
+  accountEmail: "Email",
+  accountRole: "Role",
+  createAccount: "Create Account",
+  roleAccountHost: "Host",
+  roleAccountAdmin: "Admin",
+  enrolmentLink: "Send this link to {name}. It works once, for 72 hours:",
+  enrolmentLinkLabel: "Enrolment link for {name}",
+  newEnrolmentLink: "New link",
+  deleteAccount: "Delete",
+  deleteAccountConfirm: "Delete the Account of {name}? Its Rooms stay, and only an Admin will see them.",
   signOut: "Sign out",
   wrongBackofficeToken: "That token is not right.",
   newRoom: "New Room",
   roomName: "Room name",
+  roomLabel: "Label: {slug}",
   hostName: "Host name",
   createRoom: "Create Room",
-  nameHint: "Letters, digits and dashes (spaces become dashes); names end up in the file names.",
+  nameHint: "Name it however helps you organize, for example “My show S01E01 - topic”. The file names use a short label made from it. The Host name takes letters, digits and dashes.",
   rooms: "Rooms",
   noRooms: "No Rooms yet.",
   refresh: "Refresh",
@@ -94,6 +123,8 @@ const en = {
   closeRoom: "Close Room",
   closeConfirm: "Close Room {name}? Its Invitations expire and it cannot be reopened.",
   closePending: "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close Room {name} anyway?",
+  deleteRoom: "Delete Room",
+  deleteRoomConfirm: "Delete Room {name} and all its recordings for good? This cannot be undone here, and copies may stay in the backups until they expire.",
   downloadRoom: "Download Room (original Ogg, zip)",
   convertFlac: "Convert to FLAC",
   convertingFlac: "Converting to FLAC…",
@@ -101,12 +132,19 @@ const en = {
   flacFailed: "The FLAC conversion failed.",
   flacHint: "FLAC opens in any editor: one file per Participant and Take, all as long as the Take, with each clock's drift corrected and silence where audio was lost. Place them all at zero.",
   requestFailed: "Request failed ({status}).",
-  errorInvalidName: "Use only lowercase letters, digits and dashes (up to 40).",
+  errorInvalidName: "That name is not valid. A Room name needs some letters or digits; other names, only letters, digits and dashes (up to 40).",
   errorNameTaken: "That name is already in this Room.",
   errorRoomFull: "A Room holds at most {max} Participants.",
   errorRecording: "A Take is being recorded: stop it before closing the Room.",
   errorClosed: "This Room is closed.",
   errorOpen: "Close the Room first.",
+  errorConverting: "This Room is being converted to FLAC: wait until it finishes.",
+  errorInvalidEmail: "That email address is not valid.",
+  errorEmailTaken: "There is already an Account with that email.",
+  errorLastAdmin: "Another Admin who can sign in must remain. Register a passkey for one first.",
+  errorInvalidEnrolment: "This link is not valid: it was used already or has expired. Ask an Admin for a new one.",
+  errorPasskeysUnavailable: "Passkeys are not available right now.",
+  errorNotSaved: "The change could not be saved.",
 };
 
 export type MessageKey = keyof typeof en;
@@ -141,6 +179,10 @@ export function list(parts: string[]): string {
 }
 
 export const ROLE_LABEL: Record<Role, MessageKey> = { host: "roleHost", guest: "roleGuest" };
+export const ACCOUNT_ROLE_LABEL: Record<AccountRole, MessageKey> = {
+  host: "roleAccountHost",
+  admin: "roleAccountAdmin",
+};
 export const STATUS_LABEL: Record<ParticipantStatus, MessageKey> = {
   connected: "statusConnected",
   disconnected: "statusDisconnected",
