@@ -13,15 +13,27 @@ Cualquier persona conectada a una Sala; todos graban su Pista con la misma tecno
 _Avoid_: Usuario, miembro, peer / User, member
 
 **Anfitrión** (en: **Host**):
-El Participante con privilegios: es el dueño de la instancia y el único con cuenta; crea Salas e Invitaciones, controla grabar/parar y cierra la Sala. Graba igual que cualquier otro Participante.
+El Participante con privilegios dentro de una Sala: controla grabar/parar. Graba igual que cualquier otro Participante. No implica tener Cuenta: quien crea la Sala puede dejar que la conduzca otra persona.
 _Avoid_: Admin, propietario / Owner, admin
 
+**Cuenta** (en: **Account**):
+Identidad duradera de una persona en la instancia, con identificador interno propio. Es de **Anfitrión** (crea Salas e Invitaciones y puede borrar las Salas que creó o sus Tomas, una vez cerradas) o de **Administrador**. No confundir con el Anfitrión de una Sala, que es un papel de Participante.
+_Avoid_: Usuario, perfil / User, profile
+
+**Administrador** (en: **Admin**):
+Cuenta que puede todo lo de una Cuenta de Anfitrión y además gestiona las Cuentas y puede ver, descargar y borrar las Salas de cualquiera.
+_Avoid_: Superusuario, dueño / Superuser, owner
+
+**Creador** (en: **Creator**):
+La Cuenta desde la que se creó una Sala. Una Sala puede no tener Creador, si es anterior a las Cuentas o si su Cuenta se borró; en ese caso solo la ve un Administrador y no se reasigna.
+_Avoid_: Dueño, Anfitrión / Owner, Host
+
 **Invitado** (en: **Guest**):
-Participante sin privilegios que entra a una Sala con su Invitación, sin cuenta. Tiene un nombre fijado por el Anfitrión (único en la Sala, usado para nombrar sus Pistas) y un nombre visible que él mismo puede corregir.
+Participante sin privilegios que entra a una Sala con su Invitación, sin Cuenta. Tiene un nombre fijado al invitarlo (único en la Sala, usado para nombrar sus Pistas) y un nombre visible que él mismo puede corregir.
 _Avoid_: Participante externo / Visitor, attendee
 
 **Invitación** (en: **Invitation**):
-Acceso personal de un Invitado a una Sala, creado por el Anfitrión con el nombre del Invitado (y su email si se envía por correo); puede reutilizarse para reconectar y caduca al cerrarse la Sala.
+Acceso personal de un Participante a una Sala, creado desde una Cuenta con el nombre del Invitado (y su email si se envía por correo); puede reutilizarse para reconectar y caduca al cerrarse la Sala.
 _Avoid_: Enlace, token / Link, invite token
 
 ### Estudio
@@ -31,7 +43,7 @@ No es una entidad ni un actor del dominio, sino el conjunto de reglas y mecanism
 _Avoid_: Servidor, backend / Server, backend
 
 **Sala** (en: **Room**):
-Espacio con nombre, efímero y de un solo uso, creado por el Anfitrión con sus Invitados asignados (máximo 5 Participantes en total); es una carpeta en el Coordinador que se llena de Tomas mientras está **abierta** (en: *open*). Al **cerrarla** (en: *closed*), el Anfitrión la cristaliza: queda inmutable (Tomas y metadatos), no se puede reabrir y solo puede borrarse.
+Espacio efímero y de un solo uso, creado desde una Cuenta con sus Participantes asignados (máximo 5 en total). Tiene un **nombre visible** (en: *display name*), libre y repetible, para que quien la crea se organice (p. ej. «Mi programa S01E01 - temática»), y una **etiqueta** (en: *slug*) derivada de él, con solo a-z, 0-9 y guiones, de 40 caracteres como máximo. Es una carpeta en el Coordinador que se llena de Tomas mientras está **abierta** (en: *open*). Al **cerrarla** (en: *closed*), su Anfitrión, su Creador o un Administrador la cristaliza: queda inmutable (Tomas y metadatos), no se puede reabrir y solo puede borrarse, entera o Toma a Toma.
 _Avoid_: Estudio, sesión / Studio, session
 
 **Toma** (en: **Take**):
