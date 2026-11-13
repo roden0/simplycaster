@@ -29,6 +29,10 @@ createdAt: number | null, closed: boolean, recording: boolean,
  */
 takes: number, 
 /**
+ * Numbers of the Takes not deleted; deleting a Take never renumbers the others.
+ */
+takeNumbers: Array<number>, 
+/**
  * Participants with audio not yet uploaded: closing now leaves their Tracks incomplete.
  */
 pending: Array<string>, invitations: Array<InvitationView>, flac: FlacState, };

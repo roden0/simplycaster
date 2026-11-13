@@ -78,6 +78,8 @@ pub(crate) struct Take {
     /// T, the instant of the Sync tone (Coordinator clock, ms).
     pub(crate) start_time: f64,
     pub(crate) stop_time: Option<f64>,
+    /// Deleted from the closed Room: its Tracks and FLACs are gone, its number stays taken.
+    pub(crate) deleted: bool,
 }
 
 impl Room {
@@ -165,6 +167,7 @@ impl Room {
             room.takes.push(Take {
                 start_time: t.start_time,
                 stop_time: t.stop_time,
+                deleted: t.deleted,
             });
             room.uploads
                 .extend(t.tracks.into_iter().map(|p| tus::Upload::from_file(take, p)));
@@ -397,11 +400,17 @@ impl Room {
                     });
                 }
             }
-            ClientMessage::Record | ClientMessage::Stop if role != Role::Host => {
-                eprintln!("{} {name}: only the Host can record or stop", self.id);
+            ClientMessage::Record | ClientMessage::Stop | ClientMessage::Close if role != Role::Host => {
+                eprintln!("{} {name}: only the Host can record, stop or close", self.id);
             }
             ClientMessage::Record => self.start_take(),
             ClientMessage::Stop => self.stop_take(),
+            // The Host's page warns about pending uploads and refuses while recording, like the backoffice.
+            ClientMessage::Close => {
+                if let Err(e) = self.close() {
+                    eprintln!("{} {name}: cannot close: {e:?}", self.id);
+                }
+            }
         }
     }
 
@@ -490,6 +499,7 @@ impl Room {
         self.takes.push(Take {
             start_time,
             stop_time: None,
+            deleted: false,
         });
         self.broadcast(ServerMessage::TakeStarted {
             take: self.take_count(),
@@ -535,6 +545,40 @@ impl Room {
         Ok(())
     }
 
+    /// Whether `take` was started and not deleted.
+    pub(crate) fn has_take(&self, take: u32) -> bool {
+        take >= 1 && self.takes.get(take as usize - 1).is_some_and(|t| !t.deleted)
+    }
+
+    /// Deletes a Take of a closed Room: its Tracks and FLACs leave room.json, and the files to remove
+    /// are returned, to delete outside the lock. The other Takes keep their numbers.
+    pub(crate) fn delete_take(&mut self, take: u32) -> Result<Vec<PathBuf>, BackofficeError> {
+        if !self.closed {
+            return Err(BackofficeError::Open);
+        }
+        if self.flac == FlacState::Converting {
+            return Err(BackofficeError::Converting);
+        }
+        let mut files: Vec<PathBuf> = self
+            .take_expected(take)
+            .iter()
+            .map(|name| self.flac_path(take, name))
+            .collect();
+        files.extend(
+            self.uploads
+                .iter()
+                .filter(|u| u.take == take)
+                .map(|u| self.dir.join(u.file())),
+        );
+        self.uploads.retain(|u| u.take != take);
+        self.takes[take as usize - 1].deleted = true;
+        if self.flac_files().is_empty() {
+            self.flac = FlacState::None;
+        }
+        self.save_metadata();
+        Ok(files)
+    }
+
     pub(crate) fn view(&self) -> RoomView {
         RoomView {
             id: self.id.clone(),
@@ -545,6 +589,9 @@ impl Room {
             closed: self.closed,
             recording: self.recording,
             takes: self.take_count(),
+            take_numbers: (1..=self.take_count())
+                .filter(|&n| !self.takes[n as usize - 1].deleted)
+                .collect(),
             pending: self.pending(),
             flac: self.flac,
             invitations: self
@@ -577,6 +624,7 @@ impl Room {
                     start_time: t.start_time,
                     stop_time: t.stop_time,
                     tracks,
+                    deleted: t.deleted,
                 }
             })
             .collect();
@@ -763,6 +811,22 @@ mod tests {
         }
         let after_restart = Room::load(room.dir.clone()).unwrap();
         assert_eq!(after_restart.uploads[0].drift_marks.len(), MARKS_PER_SAVE);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn only_the_host_closes_the_room_and_not_while_recording() {
+        let (mut room, mut host, _ana) = connected_room();
+        room.on_message("ana", Role::Guest, ClientMessage::Close);
+        assert!(!room.closed);
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        room.on_message("host", Role::Host, ClientMessage::Close);
+        assert!(!room.closed);
+        room.on_message("host", Role::Host, ClientMessage::Stop);
+        drain(&mut host);
+        room.on_message("host", Role::Host, ClientMessage::Close);
+        assert!(room.closed);
+        assert!(drain(&mut host).iter().any(|m| matches!(m, ServerMessage::RoomClosed)));
         std::fs::remove_dir_all(&room.dir).unwrap();
     }
 

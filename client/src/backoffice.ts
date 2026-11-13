@@ -175,7 +175,7 @@ function renderRoom(room: RoomView): HTMLElement {
       : t("roomOpen");
   section.append(
     el("h3", t("roomHeading", { name: room.displayName, created: createdText(room) })),
-    el("p", t("roomSummary", { state, takes: t("roomTakes", { takes: room.takes }) })),
+    el("p", t("roomSummary", { state, takes: t("roomTakes", { takes: room.takeNumbers.length }) })),
     el("small", t("roomLabel", { slug: room.name })),
   );
 
@@ -225,6 +225,19 @@ function renderRoom(room: RoomView): HTMLElement {
     };
     const removeRow = el("p");
     removeRow.append(remove);
+    // Deleting a Take never renumbers the others: their files keep their names.
+    const takes = el("ul");
+    for (const take of room.takeNumbers) {
+      const removeTake = el("button", t("deleteTake"));
+      removeTake.onclick = async () => {
+        if (!confirm(t("deleteTakeConfirm", { take, name: room.displayName }))) return;
+        if (await request(`${roomUrl}/takes/${take}`, "DELETE")) refresh();
+      };
+      const item = el("li", t("takeEntry", { take }));
+      item.append(" ", removeTake);
+      takes.append(item);
+    }
+    if (room.takeNumbers.length) section.append(el("h4", t("takesHeading")), takes);
     section.append(download, flacRow, removeRow);
     return section;
   }

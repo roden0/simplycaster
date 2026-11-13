@@ -54,6 +54,9 @@ pub struct TakeFile {
     pub start_time: f64,
     pub stop_time: Option<f64>,
     pub tracks: Vec<PartFile>,
+    /// Deleted from a closed Room: kept, without Tracks, so the Takes after it keep their numbers.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deleted: bool,
 }
 
 /// A Track part: what an editor needs to align it, and what a restart needs to list it again.

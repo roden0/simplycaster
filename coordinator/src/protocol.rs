@@ -98,6 +98,8 @@ pub enum ClientMessage {
     Record,
     /// Host only.
     Stop,
+    /// Host only: closes the Room (CU8), as from the backoffice.
+    Close,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -182,6 +184,8 @@ pub struct RoomView {
     pub recording: bool,
     /// Takes started so far.
     pub takes: u32,
+    /// Numbers of the Takes not deleted; deleting a Take never renumbers the others.
+    pub take_numbers: Vec<u32>,
     /// Participants with audio not yet uploaded: closing now leaves their Tracks incomplete.
     pub pending: Vec<String>,
     pub invitations: Vec<InvitationView>,

@@ -184,6 +184,35 @@ pub async fn delete_room(
     }
 }
 
+/// Deletes one Take of a closed Room, Tracks and FLACs, for good. Like a whole Room: never while
+/// converting, and the files go after the lock is released.
+pub async fn delete_take(
+    who: SignedIn,
+    Path((id, take)): Path<(String, u32)>,
+    State(state): State<AppState>,
+) -> Result<Json<RoomView>, Response> {
+    let shared = room(&state, &id, &who)?;
+    let (files, view) = {
+        let mut room = shared.lock().unwrap();
+        if !room.has_take(take) {
+            return Err(StatusCode::NOT_FOUND.into_response());
+        }
+        (room.delete_take(take).map_err(error)?, room.view())
+    };
+    tokio::task::spawn_blocking(move || {
+        for f in files {
+            if let Err(e) = std::fs::remove_file(&f)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                eprintln!("{}: cannot delete: {e}", f.display());
+            }
+        }
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?;
+    Ok(Json(view))
+}
+
 /// CU9: the closed Room as one folder: every Track part, complete or not, and `room.json`.
 pub async fn zip(who: SignedIn, Path(id): Path<String>, State(state): State<AppState>) -> Result<Response, Response> {
     let shared = room(&state, &id, &who)?;
@@ -419,6 +448,55 @@ mod tests {
         assert_eq!(delete(&state, host("ana"), &view.id).await, Ok(StatusCode::NO_CONTENT));
         assert!(!folder.exists());
         assert!(visible(&state, admin()).await.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_take_of_a_closed_room_is_deleted_without_renumbering_the_others() {
+        let (state, dir) = coordinator();
+        let view = new_room(&state, host("ana"), "tomas").await;
+        let shared = state.rooms.lock().unwrap()[0].clone();
+        let file = |take: u32| shared.lock().unwrap().dir.join(format!("t{take}_host.ogg"));
+        {
+            let mut room = shared.lock().unwrap();
+            for take in 1..=3 {
+                room.start_take();
+                room.stop_take();
+                let saved = format!(
+                    r#"{{"participant":"host","part":1,"file":"t{take}_host.ogg","complete":true,"bytes":3,
+                    "startTime":0,"sampleRate":48000}}"#
+                );
+                room.uploads.push(crate::tus::Upload::from_file(
+                    take,
+                    serde_json::from_str(&saved).unwrap(),
+                ));
+                std::fs::write(room.dir.join(format!("t{take}_host.ogg")), "ogg").unwrap();
+            }
+            std::fs::create_dir_all(room.dir.join("flac")).unwrap();
+            std::fs::write(room.flac_path(2, "host"), "flac").unwrap();
+        }
+        let del = |who: SignedIn, take: u32| delete_take(who, Path((view.id.clone(), take)), State(state.clone()));
+        assert_eq!(del(host("ana"), 2).await.unwrap_err().status(), StatusCode::CONFLICT);
+        let _ = close(host("ana"), Path(view.id.clone()), State(state.clone()))
+            .await
+            .unwrap();
+        shared.lock().unwrap().flac = FlacState::Converting;
+        assert_eq!(del(host("ana"), 2).await.unwrap_err().status(), StatusCode::CONFLICT);
+        shared.lock().unwrap().flac = FlacState::Ready;
+        assert_eq!(del(host("bea"), 2).await.unwrap_err().status(), StatusCode::NOT_FOUND);
+        assert_eq!(del(host("ana"), 9).await.unwrap_err().status(), StatusCode::NOT_FOUND);
+
+        let after = del(host("ana"), 2).await.unwrap().0;
+        assert_eq!(after.take_numbers, [1, 3]);
+        assert_eq!(after.flac, FlacState::Ready);
+        assert!(!file(2).exists() && !shared.lock().unwrap().flac_path(2, "host").exists());
+        assert!(file(1).exists() && file(3).exists());
+        assert_eq!(del(admin(), 2).await.unwrap_err().status(), StatusCode::NOT_FOUND);
+
+        // After a restart Take 3 is still Take 3, with its Track.
+        let loaded = crate::room::Room::load(shared.lock().unwrap().dir.clone()).unwrap();
+        assert_eq!(loaded.view().take_numbers, [1, 3]);
+        assert!(loaded.uploads.iter().any(|u| u.take == 3 && u.file() == "t3_host.ogg"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
