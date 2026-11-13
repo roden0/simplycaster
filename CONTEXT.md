@@ -33,8 +33,16 @@ Participante sin privilegios que entra a una Sala con su Invitación, sin Cuenta
 _Avoid_: Participante externo / Visitor, attendee
 
 **Invitación** (en: **Invitation**):
-Acceso personal de un Participante a una Sala, creado desde una Cuenta con el nombre del Invitado (y su email si se envía por correo); puede reutilizarse para reconectar y caduca al cerrarse la Sala.
+Acceso personal de un Participante a una Sala, creado desde una Cuenta con el nombre del Invitado; puede enviarse por correo, reutilizarse para reconectar y caduca al cerrarse la Sala.
 _Avoid_: Enlace, token / Link, invite token
+
+**Enlace de alta** (en: **Enrolment link**):
+Enlace de un solo uso que genera un Administrador para que una Cuenta registre una passkey, al crearse o para recuperar el acceso.
+_Avoid_: Invitación / Invitation
+
+**Enlace de acceso** (en: **Sign-in link**):
+Enlace de un solo uso y corta duración que una persona pide con el email de su Cuenta para entrar sin passkey.
+_Avoid_: Enlace mágico / Magic link
 
 ### Estudio
 
