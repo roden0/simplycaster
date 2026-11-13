@@ -198,6 +198,7 @@ async function connect(invite: string) {
       case "roomClosed":
         ended = true;
         live?.leave();
+        takeControls.replaceChildren();
         status.textContent = t("roomClosed");
         break;
       case "takeTracks":
@@ -257,7 +258,18 @@ function renderHostControls() {
   const stop = el("button", t("stop"));
   record.onclick = () => send({ type: "record" });
   stop.onclick = () => send({ type: "stop" });
-  takeControls.replaceChildren(record, " ", stop);
+  // CU8 from inside the Room, with the same warning as the backoffice.
+  const close = el("button", t("closeRoom"));
+  close.onclick = () => {
+    if (activeTake) {
+      takeStatus.textContent = t("errorRecording");
+      return;
+    }
+    const pending = lastRoster.filter((p) => p.syncing).map((p) => p.name);
+    const question = pending.length ? t("closeHerePending", { names: list(pending) }) : t("closeHere");
+    if (confirm(question)) send({ type: "close" });
+  };
+  takeControls.replaceChildren(record, " ", stop, " ", close);
 }
 
 /** Starts recording the active Take as soon as microphone and clock are ready (CU4, CU7). */

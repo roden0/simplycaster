@@ -267,6 +267,10 @@ async fn main() {
             post(backoffice::create_invitation),
         )
         .route(&format!("{api}/{{id}}/close"), post(backoffice::close))
+        .route(
+            &format!("{api}/{{id}}/takes/{{take}}"),
+            axum::routing::delete(backoffice::delete_take),
+        )
         .route(&format!("{api}/{{id}}/zip"), get(backoffice::zip))
         .route(&format!("{api}/{{id}}/flac"), post(backoffice::convert_flac))
         .route(&format!("{api}/{{id}}/flac/zip"), get(backoffice::flac_zip))
