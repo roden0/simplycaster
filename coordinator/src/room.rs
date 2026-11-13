@@ -71,6 +71,9 @@ pub(crate) struct Room {
     pub(crate) uploads: Vec<tus::Upload>,
 }
 
+/// Drift marks received for a part before room.json is written again.
+const MARKS_PER_SAVE: usize = 5;
+
 pub(crate) struct Take {
     /// T, the instant of the Sync tone (Coordinator clock, ms).
     pub(crate) start_time: f64,
@@ -375,6 +378,10 @@ impl Room {
                         clock_offset_ms,
                         clock_rtt_ms,
                     });
+                    // Marks live in memory: a restart mid-Take loses at most this many (~2 s apart).
+                    if u.drift_marks.len() % MARKS_PER_SAVE == 0 {
+                        self.save_metadata();
+                    }
                 }
             }
             ClientMessage::Signal { to, data } => {
@@ -733,6 +740,29 @@ mod tests {
         room.on_message("ana", Role::Guest, mark);
         let marks: Vec<_> = room.uploads.iter().map(|u| u.drift_marks.len()).collect();
         assert_eq!(marks, [0, 1]);
+        std::fs::remove_dir_all(&room.dir).unwrap();
+    }
+
+    #[test]
+    fn drift_marks_reach_room_json_while_recording() {
+        let (mut room, _host, _ana) = connected_room();
+        room.on_message("host", Role::Host, ClientMessage::Record);
+        let saved = r#"{"participant":"ana","part":1,"file":"p1.ogg","complete":false,"bytes":0,
+            "startTime":0,"sampleRate":48000}"#;
+        room.uploads
+            .push(tus::Upload::from_file(1, serde_json::from_str(saved).unwrap()));
+        for i in 0..MARKS_PER_SAVE as u64 {
+            let mark = ClientMessage::DriftMark {
+                take: 1,
+                samples: 96_000 * i,
+                coordinator_time: 1e12 + 2000.0 * i as f64,
+                clock_offset_ms: 0.0,
+                clock_rtt_ms: 40.0,
+            };
+            room.on_message("ana", Role::Guest, mark);
+        }
+        let after_restart = Room::load(room.dir.clone()).unwrap();
+        assert_eq!(after_restart.uploads[0].drift_marks.len(), MARKS_PER_SAVE);
         std::fs::remove_dir_all(&room.dir).unwrap();
     }
 

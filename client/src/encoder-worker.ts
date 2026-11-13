@@ -159,7 +159,12 @@ function startUpload(file: TrackFile, fileName: string, take: number, invite: st
         close() {},
       }),
     },
+    // A failed HEAD (the proxy mid-redeploy) must not start a new upload: retry until the Coordinator
+    // is back, which resumes this one from what its file holds (ADR-0007).
+    onShouldRetry: (e) =>
+      navigator.onLine && (e as { originalResponse?: { getStatus(): number } }).originalResponse?.getStatus() !== 403,
     onUploadUrlAvailable() {
+      delete upload.options.endpoint;
       postMessage({ uploadStarted: fileName, uploadUrl: upload.url, take });
     },
     async onSuccess() {
