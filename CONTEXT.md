@@ -62,6 +62,10 @@ _Avoid_: Segmento, trozo, chunk / Segment, chunk
 Marca audible insertada en todas las Pistas de una Toma en el mismo instante según el reloj del Coordinador, para alinear su inicio al editar. Alinea el inicio con un margen de unos 15 ms, pero no la duración: de eso se ocupa la corrección de deriva (ADR-0004).
 _Avoid_: Clap, beep, marca de sincronización / Clap, beep, marker
 
+**Deriva** (en: **Drift**):
+Diferencia de ritmo entre el reloj de audio del navegador de un Participante y el reloj del Coordinador, en partes por millón; hace que una Pista dure algo más o algo menos que la Toma. Se mide con las Marcas de deriva y se corrige al convertir a FLAC (ADR-0004).
+_Avoid_: Desfase / Offset (el desfase es la diferencia en el inicio)
+
 **Marca de deriva** (en: **Drift mark**):
 Anotación que cada navegador manda cada 2 s mientras graba: cuántas muestras lleva su Pista en ese instante del reloj del Coordinador. Su pendiente mide la deriva del reloj de audio de esa Pista, y con ella se corrige al convertir a FLAC; un salto entre dos marcas señala audio perdido, que se rellena con silencio (ADR-0010).
 _Avoid_: Timestamp, checkpoint
