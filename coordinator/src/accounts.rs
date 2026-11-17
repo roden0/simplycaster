@@ -173,6 +173,11 @@ impl Accounts {
         Ok(accounts)
     }
 
+    /// Whether `email` is the one `account` was created with, however it is spelt.
+    pub fn has_email(&self, account: &Account, email: &str) -> bool {
+        account.email_print.as_deref() == Some(self.print(email).as_str())
+    }
+
     /// The fingerprint an email is found by.
     fn print(&self, email: &str) -> String {
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.email_key).expect("HMAC takes any key");
@@ -448,6 +453,17 @@ mod tests {
         );
         accounts.create("Ana", "a.na@example.com", AccountRole::Host).unwrap();
         accounts.create("Ana 2", "ana@example.com", AccountRole::Host).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_account_knows_its_email_in_any_spelling() {
+        let dir = folder();
+        let accounts = Accounts::load_or_create(&dir).unwrap();
+        let token = accounts.create("Rod", "rod@gmail.com", AccountRole::Host).unwrap();
+        let rod = accounts.enrolling(&token).unwrap();
+        assert!(accounts.has_email(&rod, " R.od+x@googlemail.com"));
+        assert!(!accounts.has_email(&rod, "rod@example.com"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

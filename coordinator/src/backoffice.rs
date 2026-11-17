@@ -16,7 +16,7 @@ use crate::{
     AppState, Room, SharedRoom,
     accounts_api::{SignedIn, error},
     download, flac,
-    protocol::{BackofficeError, CreateInvitation, CreateRoom, Disk, FlacState, Role, RoomView},
+    protocol::{BackofficeError, CreateInvitation, CreateRoom, Disk, FlacState, Role, RoomView, SendInvitation},
 };
 
 /// Same limit as `valid_name`, which has the last word.
@@ -152,6 +152,49 @@ pub async fn create_invitation(
     room.invite(&normalize(&req.name), Role::Guest).map_err(error)?;
     room.save_metadata();
     Ok(Json(room.view()))
+}
+
+/// Sends Participant `name` their Invitation link while the Room is open. The email is not kept.
+pub async fn mail_invitation(
+    who: SignedIn,
+    Path((id, name)): Path<(String, String)>,
+    State(state): State<AppState>,
+    Json(req): Json<SendInvitation>,
+) -> Result<StatusCode, Response> {
+    let mailer = state
+        .mailer
+        .as_ref()
+        .ok_or_else(|| error(BackofficeError::MailUnavailable))?;
+    let (room_name, token) = {
+        let shared = room(&state, &id, &who)?;
+        let room = shared.lock().unwrap();
+        if room.closed {
+            return Err(error(BackofficeError::Closed));
+        }
+        let participant = room
+            .participants
+            .iter()
+            .find(|p| p.view.name == name)
+            .ok_or_else(|| error(BackofficeError::NotFound))?;
+        let shown = room.display_name.clone().unwrap_or_else(|| room.name.clone());
+        (shown, participant.token.clone())
+    };
+    let link = mailer.link(&format!("/i/{token}"));
+    let values = [
+        ("name", name.as_str()),
+        ("room", room_name.as_str()),
+        ("link", link.as_str()),
+    ];
+    let (subject, body) = (crate::mail::en::INVITATION_SUBJECT, crate::mail::en::INVITATION_BODY);
+    mailer
+        .send(
+            &req.email,
+            crate::mail::fill(subject, &values),
+            crate::mail::fill(body, &values),
+        )
+        .await
+        .map_err(error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// CU8: the backoffice warns about `pending` before calling this.
@@ -322,6 +365,7 @@ mod tests {
             logins: Default::default(),
             registrations: Default::default(),
             feeds: None,
+            mailer: None,
         });
         (state, dir)
     }

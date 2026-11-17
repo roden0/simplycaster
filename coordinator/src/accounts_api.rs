@@ -16,9 +16,9 @@ use webauthn_rs_proto::ResidentKeyRequirement;
 use crate::accounts::Account;
 use crate::protocol::{
     AccountRole, AccountView, BackofficeError, CreateAccount, EnrolmentLink, FinishLogin, FinishRegistration, Me,
-    PasskeyChallenge, SignIn, SignInOptions, StartEnrolment,
+    PasskeyChallenge, SendEnrolment, SignIn, SignInOptions, StartEnrolment,
 };
-use crate::{AppState, session};
+use crate::{AppState, mail, session};
 
 /// A request from a signed-in Account. As an extractor, a handler cannot forget to check it; the Account
 /// is looked up every time, so deleting it or changing its role takes effect on its next request.
@@ -89,10 +89,11 @@ pub fn error(e: BackofficeError) -> Response {
         | BackofficeError::InvalidDetails
         | BackofficeError::InvalidFile => StatusCode::BAD_REQUEST,
         BackofficeError::InvalidEnrolment | BackofficeError::NotFound => StatusCode::NOT_FOUND,
-        BackofficeError::PasskeysUnavailable | BackofficeError::PublishingUnavailable => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
+        BackofficeError::PasskeysUnavailable
+        | BackofficeError::PublishingUnavailable
+        | BackofficeError::MailUnavailable => StatusCode::SERVICE_UNAVAILABLE,
         BackofficeError::NotSaved => StatusCode::INTERNAL_SERVER_ERROR,
+        BackofficeError::MailFailed => StatusCode::BAD_GATEWAY,
         _ => StatusCode::CONFLICT,
     };
     (status, Json(e)).into_response()
@@ -145,6 +146,7 @@ pub async fn me(who: SignedIn, State(state): State<AppState>) -> Result<Json<Me>
         role: account.role,
         initial: account.initial,
         publishing: state.feeds.is_some(),
+        mail: state.mailer.is_some(),
     }))
 }
 
@@ -269,7 +271,8 @@ pub async fn create(
     Json(req): Json<CreateAccount>,
 ) -> Result<Json<EnrolmentLink>, Response> {
     let token = state.accounts.create(&req.name, &req.email, req.role).map_err(error)?;
-    Ok(Json(EnrolmentLink { token }))
+    let account = state.accounts.enrolling(&token).expect("just created").id;
+    Ok(Json(EnrolmentLink { account, token }))
 }
 
 pub async fn enrol_again(
@@ -278,7 +281,7 @@ pub async fn enrol_again(
     State(state): State<AppState>,
 ) -> Result<Json<EnrolmentLink>, Response> {
     match state.accounts.enrol_again(&id).map_err(error)? {
-        Some(token) => Ok(Json(EnrolmentLink { token })),
+        Some(token) => Ok(Json(EnrolmentLink { account: id, token })),
         None => Err(StatusCode::NOT_FOUND.into_response()),
     }
 }
@@ -289,4 +292,34 @@ pub async fn delete(_: Admin, Path(id): Path<String>, State(state): State<AppSta
         true => Ok(StatusCode::NO_CONTENT),
         false => Err(StatusCode::NOT_FOUND.into_response()),
     }
+}
+
+/// Sends a live Enrolment link of Account `id`. The Admin types the email again, since only its
+/// fingerprint is kept; a different one is refused so the link cannot reach someone else by mistake.
+pub async fn mail_enrolment(
+    _: Admin,
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(req): Json<SendEnrolment>,
+) -> Result<StatusCode, Response> {
+    let mailer = state
+        .mailer
+        .as_ref()
+        .ok_or_else(|| error(BackofficeError::MailUnavailable))?;
+    let account = state
+        .accounts
+        .enrolling(&req.token)
+        .filter(|a| a.id == id)
+        .ok_or_else(|| error(BackofficeError::InvalidEnrolment))?;
+    if !state.accounts.has_email(&account, &req.email) {
+        return Err(error(BackofficeError::WrongEmail));
+    }
+    let link = mailer.link(&format!("/backoffice#enrol={}", req.token));
+    let values = [("name", account.name.as_str()), ("link", link.as_str())];
+    let (subject, body) = (mail::en::ENROLMENT_SUBJECT, mail::en::ENROLMENT_BODY);
+    mailer
+        .send(&req.email, mail::fill(subject, &values), mail::fill(body, &values))
+        .await
+        .map_err(error)?;
+    Ok(StatusCode::NO_CONTENT)
 }

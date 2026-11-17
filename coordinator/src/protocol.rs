@@ -277,6 +277,12 @@ pub enum BackofficeError {
     InvalidDetails,
     /// The change could not be written to disk.
     NotSaved,
+    /// Sending email needs `SMTP_URL` (ADR-0012).
+    MailUnavailable,
+    /// The mail server did not take the email; the link can still be copied.
+    MailFailed,
+    /// The email is not the one of that Account.
+    WrongEmail,
 }
 
 // --- Accounts (ADR-0011) ---
@@ -312,6 +318,23 @@ pub struct Me {
     pub initial: bool,
     /// `PUBLIC_URL` is set, so Podcasts can be published (ADR-0013).
     pub publishing: bool,
+    /// `SMTP_URL` is set, so links can be sent by email (ADR-0012).
+    pub mail: bool,
+}
+
+/// Where to send a link by email; the address is not kept (ADR-0012).
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SendInvitation {
+    pub email: String,
+}
+
+/// An Enrolment link to send: it must be live and the email must be the Account's.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SendEnrolment {
+    pub token: String,
+    pub email: String,
 }
 
 /// Space on the disk that holds `DATA_DIR`, in bytes: Tracks and Episodes fill it without warning.
@@ -342,6 +365,8 @@ pub struct CreateAccount {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct EnrolmentLink {
+    /// The Account it belongs to, to send the link by email.
+    pub account: String,
     pub token: String,
 }
 

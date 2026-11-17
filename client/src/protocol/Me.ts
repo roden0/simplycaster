@@ -5,4 +5,8 @@ export type Me = { name: string, role: AccountRole, initial: boolean,
 /**
  * `PUBLIC_URL` is set, so Podcasts can be published (ADR-0013).
  */
-publishing: boolean, };
+publishing: boolean, 
+/**
+ * `SMTP_URL` is set, so links can be sent by email (ADR-0012).
+ */
+mail: boolean, };

@@ -30,7 +30,13 @@ const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   publishingUnavailable: "errorPublishingUnavailable",
   invalidFile: "errorInvalidFile",
   invalidDetails: "errorInvalidDetails",
+  mailUnavailable: "errorMailUnavailable",
+  mailFailed: "errorMailFailed",
+  wrongEmail: "errorWrongEmail",
 };
+
+/** What this instance offers, set by the page shell once it knows who is signed in. */
+export const features = { mail: false };
 
 /** The page-wide error line, above the content of every page. */
 export const error = el("p");
@@ -105,8 +111,11 @@ export function button(text: string, onclick: () => void, kind?: "primary" | "da
   return b;
 }
 
-/** A read-only link with a button to copy it. */
-export function copyableLink(value: string, label: string): HTMLElement {
+/** Sends a link to `email`; true once sent. */
+export type SendLink = { to: string; email?: string; send: (email: string) => Promise<boolean> };
+
+/** A read-only link with a button to copy it and, with SMTP set up, one to send it by email. */
+export function copyableLink(value: string, label: string, mail?: SendLink): HTMLElement {
   const wrap = el("div");
   wrap.className = "copyable";
   const link = el("input");
@@ -119,7 +128,23 @@ export function copyableLink(value: string, label: string): HTMLElement {
     copy.textContent = t("copied");
   });
   wrap.append(link, copy);
-  return wrap;
+  if (!mail || !features.mail) return wrap;
+  const sent = el("p");
+  sent.setAttribute("role", "status");
+  sent.className = "meta";
+  const send = button(t("sendByEmail"), () => {
+    const email = field(t("recipientEmail"), mail.email ?? "", 254);
+    email.input.type = "email";
+    showForm(t("sendLinkTo", { name: mail.to }), [email.wrap], t("send"), async () => {
+      const done = await mail.send(email.input.value.trim());
+      if (done) sent.textContent = t("mailSent", { email: email.input.value.trim() });
+      return done;
+    });
+  });
+  wrap.append(send);
+  const box = el("div");
+  box.append(wrap, sent);
+  return box;
 }
 
 export function field(label: string, value = "", maxLength = 40) {
