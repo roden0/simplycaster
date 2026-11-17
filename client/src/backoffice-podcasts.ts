@@ -7,6 +7,7 @@ import type { EpisodeView } from "./protocol/EpisodeView.ts";
 import type { PodcastDetails } from "./protocol/PodcastDetails.ts";
 import type { PodcastView } from "./protocol/PodcastView.ts";
 import type { ShowType } from "./protocol/ShowType.ts";
+import type { NewSubscriptionKey } from "./protocol/NewSubscriptionKey.ts";
 import {
   base,
   button,
@@ -155,7 +156,10 @@ function renderPodcast(p: PodcastView, navigate: Navigate, show: (p: PodcastView
   json.href = `${pageUrl}/feed.json`;
   json.target = "_blank";
   pages.append(json);
-  feed.append(el("h2", t("feed")), copyableLink(p.feedUrl, t("feed")), el("p", generated), pages);
+  feed.append(el("h2", t("feed")));
+  // A private feed has one address per Subscription key: the bare one is a 404.
+  if (p.details.private) feed.append(el("p", t("privateFeedHint")), el("p", generated));
+  else feed.append(copyableLink(p.feedUrl, t("feed")), el("p", generated), pages);
   const gaps = missing(p);
   if (gaps.length) {
     const warn = el("p", t("podcastMissing", { fields: gaps.join(", ") }));
@@ -163,7 +167,10 @@ function renderPodcast(p: PodcastView, navigate: Navigate, show: (p: PodcastView
     feed.append(warn);
   }
 
-  return [pageHead(p.details.title, ...actions), feed, detailsSection(p, show), episodesSection(p, show)];
+  const sections = [pageHead(p.details.title, ...actions), feed, detailsSection(p, show)];
+  if (p.details.private) sections.push(keysSection(p, show));
+  sections.push(episodesSection(p, show));
+  return sections;
 }
 
 function textArea(label: string, value: string, maxLength: number) {
@@ -301,6 +308,14 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
     d.showType,
   );
   const copyright = optional(field(t("podcastCopyright"), d.copyright, 255));
+  const privateBox = el("input");
+  privateBox.type = "checkbox";
+  privateBox.checked = d.private;
+  const privateLabel = el("label");
+  privateLabel.className = "check";
+  privateLabel.append(privateBox, t("podcastPrivate"));
+  const privateHint = el("small", t("podcastPrivateHint"));
+  privateHint.className = "hint";
   const cover = fileField(p.cover ? t("replaceCover") : t("podcastCover"), "image/jpeg,image/png");
   const coverHint = el("small", t("artworkHint"));
   coverHint.className = "hint";
@@ -321,6 +336,8 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
     explicitLabel,
     showType.wrap,
     copyright.wrap,
+    privateLabel,
+    privateHint,
     cover.wrap,
     coverHint,
     progress,
@@ -348,6 +365,7 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
         explicit: explicit.checked,
         showType: showType.input.value as ShowType,
         copyright: copyright.input.value,
+        private: privateBox.checked,
       };
       const now = await request<PodcastView>(podcastUrl(p.slug), "PUT", details);
       if (!now || now === true) return;
@@ -363,6 +381,63 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
   // Open while something Apple needs is missing: that is the work left to do.
   section.open = missing(p).length > 0;
   section.append(el("summary", t("podcastDetails")), form);
+  return section;
+}
+
+// ── Subscription keys ──────────────────────────────────────────────────────────────────────────
+
+/** Who can read a private Podcast: one key each, revocable, its address shown only once. */
+function keysSection(p: PodcastView, show: (p: PodcastView) => void): HTMLElement {
+  const section = el("section");
+  const created = el("div");
+  const list = el("ul");
+  list.className = "rows";
+  if (!p.keys.length) list.append(el("li", t("noKeys")));
+  for (const k of p.keys) {
+    const row = el("li");
+    row.className = "row";
+    const head = el("div");
+    head.className = "row-head";
+    const used =
+      k.lastUsedAt === null
+        ? t("keyNeverUsed")
+        : t("keyUsed", { when: dateTime(k.lastUsedAt), addresses: k.addresses });
+    const meta = el("span", `${t("keyCreated", { when: dateTime(k.createdAt) })} · ${used}`);
+    meta.className = "meta";
+    const actions = el("div");
+    actions.className = "actions";
+    actions.append(
+      button(
+        t("revokeKey"),
+        async () => {
+          if (!confirm(t("revokeKeyConfirm", { name: k.name }))) return;
+          const now = await request<PodcastView>(`${podcastUrl(p.slug)}/keys/${encodeURIComponent(k.id)}`, "DELETE");
+          if (now && now !== true) show(now);
+        },
+        "danger",
+      ),
+    );
+    head.append(el("strong", k.name), meta, actions);
+    row.append(head);
+    list.append(row);
+  }
+  const name = field(t("keyName"), "", 255);
+  const add = formDialog(t("newKey"), [name.wrap], t("createKey"), async () => {
+    const made = await request<NewSubscriptionKey>(`${podcastUrl(p.slug)}/keys`, "POST", { name: name.input.value });
+    if (!made || made === true) return false;
+    const fresh = await load<PodcastView>(podcastUrl(p.slug));
+    if (fresh) show(fresh);
+    // After the redraw, so the address is not lost with the old page.
+    const box = el("div");
+    box.className = "notice";
+    box.setAttribute("role", "status");
+    box.append(el("p", t("keyCreatedOnce", { name: name.input.value })), copyableLink(made.feedUrl, t("keyName")));
+    document.querySelector("#key-result")?.replaceChildren(box);
+    name.input.value = "";
+    return true;
+  });
+  created.id = "key-result";
+  section.append(pageHead(t("subscriptionKeys"), add), created, list);
   return section;
 }
 
@@ -418,7 +493,7 @@ function episodeRow(p: PodcastView, e: EpisodeView, show: (p: PodcastView) => vo
   const actions = el("div");
   actions.className = "actions";
   const url = `${podcastUrl(p.slug)}/episodes/${encodeURIComponent(e.slug)}`;
-  if (e.live) {
+  if (e.live && !p.details.private) {
     const open = el("a", t("publicPage"));
     open.href = `${p.feedUrl.replace(/\/feed\.xml$/, "")}/${encodeURIComponent(e.slug)}`;
     open.target = "_blank";

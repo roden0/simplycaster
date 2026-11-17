@@ -84,6 +84,14 @@ Edit an Episode to change its details or replace any of its files: its identity 
 
 Show notes appear as written on those pages, but no script runs there: whatever the HTML contains, the pages are sandboxed away from the backoffice.
 
+**Private Podcasts.** For paid subscriptions, or a Podcast you sell through an app, tick *Private* in its details. From then on the feed, the pages and every file need a Subscription key, and anything without a valid one gets a 404. The feed also tells directories not to list it (`podcast:locked`, `itunes:block`), so do not submit a private Podcast to them.
+
+- Under *Subscription keys*, create one key per subscriber or app, with a name to recognise it (`Ana`, `Supporter app`). You get a feed address with the key in it, `https://<DOMAIN>/podcasts/<podcast>/k/<key>/feed.xml`: send it to them, and they paste it into their podcast app. It is shown only once; if it is lost, revoke the key and create another.
+- Each key shows when it was last used and from how many addresses in the last 24 hours: many addresses may mean it has been shared. Apps such as Overcast fetch from their own servers, so one key there counts few addresses for many listeners. These figures start again when the server restarts.
+- *Revoke* stops a key at once. Anyone holding the address can listen, as with any private podcast feed, and it may end up in logs along the way: revoking is the remedy if one leaks.
+- Making the Podcast public again keeps the keys, and keyed addresses keep working.
+- An address that makes too many failed requests (30 in 10 minutes) is answered 429 for a while. Behind your own reverse proxy, it must send `X-Forwarded-For` (Caddy and Traefik do), or every listener would share the proxy's address.
+
 **5. Submit it.** Paste the feed address (`https://<DOMAIN>/podcasts/<podcast>/feed.xml`) into [Apple Podcasts Connect](https://podcastsconnect.apple.com), [Spotify for Creators](https://creators.spotify.com) or the [Podcast Index](https://podcastindex.org/add); most other apps (Pocket Casts, Overcast, AntennaPod) find it through those or accept the address directly.
 
 The files live in `./data/podcasts/<podcast>/` and go into the backups with everything else, so budget disk space for the mp3s too: the Dashboard shows what is left. Behind your own reverse proxy, allow uploads of at least 500 MB (for example `client_max_body_size 500m;` in nginx).

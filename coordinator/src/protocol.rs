@@ -427,6 +427,9 @@ pub struct PodcastDetails {
     pub explicit: bool,
     pub show_type: ShowType,
     pub copyright: String,
+    /// Feed, pages and files only with a Subscription key; absent in Podcasts saved before it.
+    #[serde(default)]
+    pub private: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
@@ -466,6 +469,36 @@ pub struct PodcastView {
     /// Its Creator or an Admin; any Account edits it.
     pub can_delete: bool,
     pub episodes: Vec<EpisodeView>,
+    pub keys: Vec<SubscriptionKeyView>,
+}
+
+/// A Subscription key as the backoffice lists it: never its secret, which is shown once.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SubscriptionKeyView {
+    pub id: String,
+    /// Who it was given to: a subscriber, an app.
+    pub name: String,
+    pub created_at: f64,
+    /// Since the Coordinator started; None if not used since.
+    pub last_used_at: Option<f64>,
+    /// Distinct addresses that used it in the last 24 h: many hint at a shared key.
+    pub addresses: u32,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct CreateSubscriptionKey {
+    pub name: String,
+}
+
+/// The feed address with a new key in it: the only time the key is shown.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NewSubscriptionKey {
+    pub feed_url: String,
 }
 
 #[derive(Debug, Serialize, TS)]

@@ -301,6 +301,11 @@ async fn main() {
             &format!("{pods}/{{slug}}/episodes/{{ep}}"),
             put(feeds_api::edit_episode).delete(feeds_api::delete_episode),
         )
+        .route(&format!("{pods}/{{slug}}/keys"), post(feeds_api::create_key))
+        .route(
+            &format!("{pods}/{{slug}}/keys/{{id}}"),
+            axum::routing::delete(feeds_api::revoke_key),
+        )
         .route(
             &format!("{pods}/{{slug}}/episodes/{{ep}}/{{kind}}"),
             put(feeds_api::upload_episode_file),
@@ -315,6 +320,9 @@ async fn main() {
         .route("/podcasts/{slug}", get(feeds_api::podcast_page))
         .route("/podcasts/{slug}/", get(feeds_api::podcast_page))
         .route("/podcasts/{slug}/{file}", get(feeds_api::public_file))
+        .route("/podcasts/{slug}/k/{key}", get(feeds_api::keyed_page))
+        .route("/podcasts/{slug}/k/{key}/", get(feeds_api::keyed_page))
+        .route("/podcasts/{slug}/k/{key}/{file}", get(feeds_api::keyed_file))
         .with_state(state);
 
     let addr = SocketAddr::new(ip, port);
@@ -336,7 +344,10 @@ async fn main() {
     } else {
         println!("  backoffice: /backoffice, signing in with admin  (set BACKOFFICE_TOKEN to make it secret)");
     }
-    axum::serve(listener, app).await.unwrap();
+    // The peer address feeds the limit of failed requests to published Podcasts (ADR-0013).
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .unwrap();
 }
 
 #[cfg(test)]
