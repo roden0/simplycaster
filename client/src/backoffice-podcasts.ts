@@ -274,6 +274,51 @@ function upload(url: string, file: File, progress: HTMLProgressElement): Promise
   });
 }
 
+/**
+ * The file already uploaded to `url`: a link to it (a thumbnail for images) and a button to remove
+ * it. Once removed, the line goes and the field takes `emptyLabel`. Its problems are shown here, next
+ * to the field, since the page-wide error may be out of sight.
+ */
+function storedFile(
+  url: string,
+  text: string,
+  field: { wrap: HTMLElement },
+  emptyLabel: string,
+  removed: (p: PodcastView) => void,
+): HTMLElement {
+  const line = el("div");
+  line.className = "stored-file";
+  const open = el("a");
+  open.href = url;
+  open.target = "_blank";
+  if (field.wrap.querySelector("input")?.accept.startsWith("image/")) {
+    const thumb = el("img");
+    thumb.src = url;
+    thumb.alt = "";
+    open.append(thumb);
+  }
+  open.append(text);
+  const problem = el("span");
+  problem.setAttribute("role", "alert");
+  problem.className = "alert";
+  const remove = button(
+    t("removeFile"),
+    async () => {
+      if (!confirm(t("removeFileConfirm"))) return;
+      const now = await request<PodcastView>(url, "DELETE");
+      problem.textContent = error.textContent;
+      error.textContent = "";
+      if (!now || now === true) return;
+      line.remove();
+      field.wrap.firstChild!.textContent = emptyLabel;
+      removed(now);
+    },
+    "danger",
+  );
+  line.append(open, remove, problem);
+  return line;
+}
+
 function progressBar(): HTMLProgressElement {
   const progress = el("progress");
   progress.max = 1;
@@ -320,6 +365,9 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
   const coverHint = el("small", t("artworkHint"));
   coverHint.className = "hint";
   const progress = progressBar();
+  const problem = el("p");
+  problem.setAttribute("role", "alert");
+  problem.className = "alert";
 
   const form = el("form");
   form.className = "stack";
@@ -339,22 +387,21 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
     privateLabel,
     privateHint,
     cover.wrap,
+    ...(p.cover
+      ? [storedFile(`${podcastUrl(p.slug)}/cover`, t("uploadedCover"), cover, t("podcastCover"), show)]
+      : []),
     coverHint,
     progress,
+    problem,
     save,
   );
   form.onsubmit = async (e) => {
     e.preventDefault();
     const file = cover.input.files?.[0];
-    if (file) {
-      const problem = await checkArtwork(file);
-      if (problem) {
-        error.textContent = problem;
-        return;
-      }
-    }
     save.disabled = true;
     try {
+      error.textContent = file ? ((await checkArtwork(file)) ?? "") : "";
+      if (error.textContent) return;
       const details: PodcastDetails = {
         title: title.input.value,
         description: description.input.value,
@@ -373,6 +420,9 @@ function detailsSection(p: PodcastView, show: (p: PodcastView) => void): HTMLEle
       if (after) show(after);
     } finally {
       save.disabled = false;
+      // Next to the button just pressed: the page-wide error may be scrolled out of sight.
+      problem.textContent = error.textContent;
+      error.textContent = "";
     }
   };
 
@@ -567,6 +617,13 @@ function episodeForm(p: PodcastView, e: EpisodeView | undefined, show: (p: Podca
   audio.input.required = !e;
   const image = fileField(e?.image ? t("replaceImage") : t("episodeImage"), "image/jpeg,image/png");
   const transcript = fileField(e?.transcript ? t("replaceTranscript") : t("episodeTranscript"), ".vtt,.srt");
+  const fileUrl = (kind: string) => `${podcastUrl(p.slug)}/episodes/${encodeURIComponent(e!.slug)}/${kind}`;
+  const storedImage = e?.image
+    ? [storedFile(fileUrl("image"), t("uploadedImage"), image, t("episodeImage"), show)]
+    : [];
+  const storedTranscript = e?.transcript
+    ? [storedFile(fileUrl("transcript"), t("uploadedTranscript"), transcript, t("episodeTranscript"), show)]
+    : [];
   const progress = progressBar();
   const numbers = el("div");
   numbers.className = "inline-form";
@@ -587,7 +644,9 @@ function episodeForm(p: PodcastView, e: EpisodeView | undefined, show: (p: Podca
       numbers,
       audio.wrap,
       image.wrap,
+      ...storedImage,
       transcript.wrap,
+      ...storedTranscript,
       progress,
     ],
     e ? t("save") : t("createEpisode"),

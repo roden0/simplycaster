@@ -209,6 +209,26 @@ textarea {
 }
 
 /* Messages */
+.stored-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stored-file a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stored-file img {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
 .alert:empty {
   display: none;
 }

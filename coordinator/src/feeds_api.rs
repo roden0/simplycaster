@@ -156,6 +156,33 @@ pub async fn upload_cover(
     view(&state, &who, &slug)
 }
 
+pub async fn cover(
+    _: SignedIn,
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    request: Request,
+) -> Result<Response, Response> {
+    stored(&state, &slug, None, Upload::Cover, request).await
+}
+
+pub async fn delete_cover(
+    who: SignedIn,
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<PodcastView>, Response> {
+    feeds(&state)?.remove(&slug, None, Upload::Cover).map_err(error)?;
+    view(&state, &who, &slug)
+}
+
+fn episode_upload(kind: &str) -> Result<Upload, Response> {
+    match kind {
+        "audio" => Ok(Upload::Audio),
+        "image" => Ok(Upload::Image),
+        "transcript" => Ok(Upload::Transcript),
+        _ => Err(error(BackofficeError::NotFound)),
+    }
+}
+
 pub async fn upload_episode_file(
     who: SignedIn,
     State(state): State<AppState>,
@@ -163,14 +190,51 @@ pub async fn upload_episode_file(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Json<PodcastView>, Response> {
-    let kind = match kind.as_str() {
-        "audio" => Upload::Audio,
-        "image" => Upload::Image,
-        "transcript" => Upload::Transcript,
-        _ => return Err(error(BackofficeError::NotFound)),
-    };
-    receive(&state, &slug, Some(&ep), kind, &headers, body).await?;
+    receive(&state, &slug, Some(&ep), episode_upload(&kind)?, &headers, body).await?;
     view(&state, &who, &slug)
+}
+
+pub async fn episode_file(
+    _: SignedIn,
+    State(state): State<AppState>,
+    Path((slug, ep, kind)): Path<(String, String, String)>,
+    request: Request,
+) -> Result<Response, Response> {
+    stored(&state, &slug, Some(&ep), episode_upload(&kind)?, request).await
+}
+
+pub async fn delete_episode_file(
+    who: SignedIn,
+    State(state): State<AppState>,
+    Path((slug, ep, kind)): Path<(String, String, String)>,
+) -> Result<Json<PodcastView>, Response> {
+    feeds(&state)?
+        .remove(&slug, Some(&ep), episode_upload(&kind)?)
+        .map_err(error)?;
+    view(&state, &who, &slug)
+}
+
+/// An uploaded file as stored, published or not, for whoever edits the Podcast to check it.
+async fn stored(
+    state: &AppState,
+    slug: &str,
+    ep: Option<&str>,
+    kind: Upload,
+    request: Request,
+) -> Result<Response, Response> {
+    let path = feeds(state)?
+        .stored(slug, ep, kind)
+        .ok_or_else(|| error(BackofficeError::NotFound))?;
+    let mut response = ServeFile::new(path)
+        .try_call(request)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?
+        .map(Body::new);
+    // Replacing keeps the address: always ask again.
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    Ok(response)
 }
 
 /// Streams the body to disk, at most the limit of its kind, then hands it to the Podcast.
