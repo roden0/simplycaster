@@ -5,6 +5,7 @@ mod client_files;
 mod download;
 mod feeds;
 mod feeds_api;
+mod feeds_pages;
 mod flac;
 mod live;
 mod protocol;
@@ -311,6 +312,8 @@ async fn main() {
             HeaderValue::from_static("no-cache"),
         ))
         // After the no-cache layer: published files set their own caching.
+        .route("/podcasts/{slug}", get(feeds_api::podcast_page))
+        .route("/podcasts/{slug}/", get(feeds_api::podcast_page))
         .route("/podcasts/{slug}/{file}", get(feeds_api::public_file))
         .with_state(state);
 

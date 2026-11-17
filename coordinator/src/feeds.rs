@@ -9,12 +9,15 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::{
     BackofficeError, EpisodeDetails, EpisodeType, EpisodeView, PodcastDetails, PodcastView, ShowType,
 };
-use crate::room_file;
+use crate::{feeds_pages, room_file};
 
 const FILE: &str = "podcast.json";
 pub const FEED: &str = "feed.xml";
+pub const FEED_JSON: &str = "feed.json";
+/// The Podcast's page, served at `/podcasts/<slug>`.
+pub const INDEX: &str = "index.html";
 /// Episode slugs that would collide with the Podcast's own files.
-const RESERVED: [&str; 2] = ["feed", "cover"];
+const RESERVED: [&str; 3] = ["feed", "cover", "index"];
 /// `podcast:guid` namespace of the Podcasting 2.0 spec.
 const PODCAST_NAMESPACE: uuid::Uuid = uuid::uuid!("ead4c236-bf58-58c6-a2c6-a6b28d128cb6");
 
@@ -70,7 +73,7 @@ pub struct Episode {
 }
 
 impl Episode {
-    fn live(&self, now: f64) -> bool {
+    pub(crate) fn live(&self, now: f64) -> bool {
         self.audio.is_some() && self.details.published_at.is_some_and(|t| t <= now)
     }
 }
@@ -300,7 +303,12 @@ impl Feeds {
                 .position(|e| e.slug == ep)
                 .ok_or(BackofficeError::NotFound)?;
             let gone = p.episodes.remove(at);
-            let files = [gone.audio.map(|_| format!("{ep}.mp3")), gone.image, gone.transcript];
+            let files = [
+                gone.audio.map(|_| format!("{ep}.mp3")),
+                Some(format!("{ep}.html")),
+                gone.image,
+                gone.transcript,
+            ];
             for file in files.into_iter().flatten() {
                 let _ = std::fs::remove_file(dir.join(file));
             }
@@ -370,21 +378,35 @@ impl Feeds {
     /// Writes the feed and saves the Podcast with the list of what is now public.
     fn generate(&self, p: &mut Podcast) -> Result<(), BackofficeError> {
         let now = crate::now_ms();
-        let xml = feed_xml(p, &self.podcast_url(&p.slug), now);
-        let mut published = vec![FEED.to_string()];
+        let url = self.podcast_url(&p.slug);
+        let mut files = vec![
+            (FEED.to_string(), feed_xml(p, &url, now)),
+            (FEED_JSON.to_string(), feeds_pages::feed_json(p, &url, now)),
+            (INDEX.to_string(), feeds_pages::podcast_page(p, &url, now)),
+        ];
+        let mut published: Vec<String> = files.iter().map(|(name, _)| name.clone()).collect();
         published.extend(p.cover.clone());
         for e in p.episodes.iter().filter(|e| e.live(now)) {
+            files.push((format!("{}.html", e.slug), feeds_pages::episode_page(p, e, &url)));
+            published.push(format!("{}.html", e.slug));
             published.push(format!("{}.mp3", e.slug));
             published.extend(e.image.clone());
             published.extend(e.transcript.clone());
         }
         let dir = self.folder(&p.slug);
-        std::fs::write(dir.join(format!("{FEED}.tmp")), xml)
-            .and_then(|_| std::fs::rename(dir.join(format!("{FEED}.tmp")), dir.join(FEED)))
-            .map_err(|e| {
-                eprintln!("cannot write the feed of {}: {e}", p.slug);
-                BackofficeError::NotSaved
-            })?;
+        for (name, content) in files {
+            let tmp = dir.join(format!("{name}.tmp"));
+            std::fs::write(&tmp, content)
+                .and_then(|_| std::fs::rename(&tmp, dir.join(&name)))
+                .map_err(|e| {
+                    eprintln!("cannot write {name} of {}: {e}", p.slug);
+                    BackofficeError::NotSaved
+                })?;
+        }
+        // Pages of Episodes no longer in the feed: unreachable already, but not left behind.
+        for e in p.episodes.iter().filter(|e| !e.live(now)) {
+            let _ = std::fs::remove_file(dir.join(format!("{}.html", e.slug)));
+        }
         p.generated_at = Some(now);
         p.published = published;
         self.save(p)
@@ -470,7 +492,7 @@ fn check_episode(mut d: EpisodeDetails) -> Result<EpisodeDetails, BackofficeErro
 }
 
 /// Escapes text for XML content and attributes.
-fn esc(text: &str) -> String {
+pub(crate) fn esc(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
@@ -579,9 +601,7 @@ fn feed_xml(p: &Podcast, url: &str, now: f64) -> String {
     );
     tag(&mut x, "podcast:guid", &guid.to_string());
 
-    let mut live: Vec<&Episode> = p.episodes.iter().filter(|e| e.live(now)).collect();
-    live.sort_by(|a, b| b.details.published_at.partial_cmp(&a.details.published_at).unwrap());
-    for e in live {
+    for e in feeds_pages::live(p, now) {
         let ed = &e.details;
         x.push_str("<item>\n");
         tag(&mut x, "title", &ed.title);
@@ -707,6 +727,17 @@ mod tests {
         assert!(f.public_file(&slug, "later.mp3").is_none());
         assert!(f.public_file(&slug, "podcast.json").is_none());
         assert!(f.public_file(&slug, "cover.png").is_some());
+        for page in ["live.html", FEED_JSON, INDEX] {
+            assert!(f.public_file(&slug, page).is_some(), "{page}");
+        }
+        assert!(f.public_file(&slug, "draft.html").is_none());
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(f.folder(&slug).join(FEED_JSON)).unwrap()).unwrap();
+        assert_eq!(json["items"].as_array().unwrap().len(), 1);
+        assert_eq!(json["items"][0]["attachments"][0]["size_in_bytes"], 3);
+        let page = std::fs::read_to_string(f.folder(&slug).join("live.html")).unwrap();
+        assert!(page.contains("\"@type\":\"PodcastEpisode\""));
+        assert!(page.contains("og:audio\" content=\"https://pod.example/podcasts/show/live.mp3\""));
     }
 
     #[test]
