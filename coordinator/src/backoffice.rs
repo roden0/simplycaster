@@ -16,7 +16,7 @@ use crate::{
     AppState, Room, SharedRoom,
     accounts_api::{SignedIn, error},
     download, flac,
-    protocol::{BackofficeError, CreateInvitation, CreateRoom, FlacState, Role, RoomView},
+    protocol::{BackofficeError, CreateInvitation, CreateRoom, Disk, FlacState, Role, RoomView},
 };
 
 /// Same limit as `valid_name`, which has the last word.
@@ -82,6 +82,23 @@ pub async fn list(who: SignedIn, State(state): State<AppState>) -> Result<Json<V
             .map(|r| r.lock().unwrap().view())
             .collect(),
     ))
+}
+
+/// Any Account: free space for the dashboard. Free means available to the Coordinator, not to root.
+pub async fn disk(_: SignedIn, State(state): State<AppState>) -> Result<Json<Disk>, Response> {
+    disk_of(&state.data).map(Json).map_err(|e| {
+        eprintln!("cannot read the disk space of {}: {e}", state.data.display());
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    })
+}
+
+fn disk_of(path: &std::path::Path) -> nix::Result<Disk> {
+    let fs = nix::sys::statvfs::statvfs(path)?;
+    let block = fs.fragment_size() as f64;
+    Ok(Disk {
+        free: fs.blocks_available() as f64 * block,
+        total: fs.blocks() as f64 * block,
+    })
 }
 
 /// CU1: a new open Room, with its folder and the Host's Invitation.
@@ -314,6 +331,12 @@ mod tests {
             req = req.header(header::COOKIE, c);
         }
         req.body(()).unwrap().into_parts().0
+    }
+
+    #[test]
+    fn disk_space_is_read() {
+        let disk = disk_of(&std::env::temp_dir()).unwrap();
+        assert!(disk.total > 0.0 && disk.free <= disk.total);
     }
 
     fn host(id: &str) -> SignedIn {

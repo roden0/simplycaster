@@ -303,6 +303,14 @@ pub struct Me {
     pub initial: bool,
 }
 
+/// Space on the disk that holds `DATA_DIR`, in bytes: Tracks and Episodes fill it without warning.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct Disk {
+    pub free: f64,
+    pub total: f64,
+}
+
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct SignInOptions {

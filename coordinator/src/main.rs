@@ -232,6 +232,8 @@ async fn main() {
         .route("/takes/{take}/tracks/{file}", get(download::track))
         .route("/api/session", post(ws::join))
         .route("/backoffice", get(client_files::backoffice))
+        .route("/backoffice/rooms", get(client_files::backoffice))
+        .route("/backoffice/accounts", get(client_files::backoffice))
         // Old links (/backoffice/<token>, ADR-0009) and a trailing slash would fall to the Participant
         // page: send them to the sign-in, which also drops the token from the address bar.
         .route("/backoffice/", get(to_backoffice))
@@ -243,6 +245,7 @@ async fn main() {
                 .delete(accounts_api::sign_out),
         )
         .route("/api/backoffice/me", get(accounts_api::me))
+        .route("/api/backoffice/disk", get(backoffice::disk))
         .route("/api/backoffice/me/passkeys", post(accounts_api::passkey_start))
         .route("/api/backoffice/passkeys", post(accounts_api::registration_finish))
         .route("/api/backoffice/login", post(accounts_api::login_start))

@@ -34,7 +34,7 @@ nano .env
 docker compose up -d
 ```
 
-Then open `https://<DOMAIN>/backoffice` and sign in with your `BACKOFFICE_TOKEN` as the Initial Admin. Create an Admin Account for yourself and open its link to register a passkey; once that works, delete the Initial Admin and the token stops working. Hosts get their Accounts the same way: each sees and manages only the Rooms they created. Create a Room and send each Participant their link; Participants need no Account. Keep the token secret while it works: whoever has it can manage every Account and download every recording. Each enrolment and Invitation link is secret too.
+Then open `https://<DOMAIN>/backoffice` and sign in with your `BACKOFFICE_TOKEN` as the Initial Admin. The menu has a Dashboard (open Rooms, free disk space, your passkeys), Rooms and, for Admins, Accounts. In Accounts, create an Admin Account for yourself and open its link to register a passkey; once that works, delete the Initial Admin and the token stops working. Hosts get their Accounts the same way: each sees and manages only the Rooms they created. In Rooms, create a Room and send each Participant their link; Participants need no Account. Keep the token secret while it works: whoever has it can manage every Account and download every recording. Each enrolment and Invitation link is secret too.
 
 If no Admin can sign in any more, remove the Admins from `data/accounts.json` and restart: the Initial Admin comes back.
 
