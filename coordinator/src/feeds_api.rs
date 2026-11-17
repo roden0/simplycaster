@@ -16,7 +16,8 @@ use tower_http::services::ServeFile;
 use crate::{
     AppState,
     accounts_api::{SignedIn, error},
-    feeds::{FEED, Feeds, Upload},
+    feeds::{FEED, FEED_JSON, Feeds, INDEX, Upload},
+    feeds_pages::PAGE_POLICY,
     protocol::{BackofficeError, CreatePodcast, EpisodeDetails, PodcastDetails, PodcastView},
 };
 
@@ -204,10 +205,29 @@ pub async fn public_file(
     Path((slug, file)): Path<(String, String)>,
     request: Request,
 ) -> Result<Response, StatusCode> {
+    // An Episode's page has no extension in its address.
+    let file = if file.contains('.') {
+        file
+    } else {
+        format!("{file}.html")
+    };
+    serve(&state, &slug, &file, request).await
+}
+
+/// Public: the Podcast's page, `/podcasts/<slug>`.
+pub async fn podcast_page(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    request: Request,
+) -> Result<Response, StatusCode> {
+    serve(&state, &slug, INDEX, request).await
+}
+
+async fn serve(state: &AppState, slug: &str, file: &str, request: Request) -> Result<Response, StatusCode> {
     let path = state
         .feeds
         .as_ref()
-        .and_then(|f| f.public_file(&slug, &file))
+        .and_then(|f| f.public_file(slug, file))
         .ok_or(StatusCode::NOT_FOUND)?;
     let mut response = ServeFile::new(&path)
         .try_call(request)
@@ -215,11 +235,17 @@ pub async fn public_file(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .map(Body::new);
     let headers = response.headers_mut();
-    if file == FEED {
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/rss+xml; charset=utf-8"),
-        );
+    let content_type = match file {
+        FEED => Some("application/rss+xml; charset=utf-8"),
+        FEED_JSON => Some("application/feed+json; charset=utf-8"),
+        f if f.ends_with(".html") => {
+            headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(PAGE_POLICY));
+            Some("text/html; charset=utf-8")
+        }
+        _ => None,
+    };
+    if let Some(value) = content_type {
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(value));
     }
     // Short: a regenerated feed or a replaced mp3 keeps its URL, and reaches listeners within minutes.
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=300"));

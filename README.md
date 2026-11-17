@@ -73,6 +73,17 @@ Edit an Episode to change its details or replace any of its files: its identity 
 
 **4. The feed.** It is a static file, regenerated on every change; the Podcast page shows its address and when it was last generated. A scheduled Episode enters the feed the next time it is regenerated after its date, not at its exact time: press *Regenerate feed* then. Only what is in the feed can be downloaded: drafts and scheduled Episodes are not reachable from outside.
 
+**What gets published.** For each Podcast, the instance serves:
+
+| Address | |
+|---|---|
+| `/podcasts/<podcast>` | A web page with the cover, description and the Episodes in the feed. |
+| `/podcasts/<podcast>/<episode>` | A page per Episode with a player, its notes and transcript. Share this one: it carries [Open Graph](https://ogp.me) tags, so links show the artwork and audio, and [schema.org](https://schema.org/PodcastEpisode) data for search engines. |
+| `/podcasts/<podcast>/feed.xml` | The RSS feed that podcast apps subscribe to. |
+| `/podcasts/<podcast>/feed.json` | The same in [JSON Feed](https://jsonfeed.org), for readers that prefer it. |
+
+Show notes appear as written on those pages, but no script runs there: whatever the HTML contains, the pages are sandboxed away from the backoffice.
+
 **5. Submit it.** Paste the feed address (`https://<DOMAIN>/podcasts/<podcast>/feed.xml`) into [Apple Podcasts Connect](https://podcastsconnect.apple.com), [Spotify for Creators](https://creators.spotify.com) or the [Podcast Index](https://podcastindex.org/add); most other apps (Pocket Casts, Overcast, AntennaPod) find it through those or accept the address directly.
 
 The files live in `./data/podcasts/<podcast>/` and go into the backups with everything else, so budget disk space for the mp3s too: the Dashboard shows what is left. Behind your own reverse proxy, allow uploads of at least 500 MB (for example `client_max_body_size 500m;` in nginx).

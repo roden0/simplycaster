@@ -80,6 +80,8 @@ const en = {
   allPodcasts: "← All Podcasts",
   feed: "Feed",
   feeds: "Feeds",
+  publicPage: "Public page",
+  jsonFeed: "JSON feed",
   regenerateFeed: "Regenerate feed",
   neverGenerated: "Not generated yet.",
   generatedAt: "Generated {when}. It is regenerated on every change; regenerate by hand when a scheduled Episode's time comes.",

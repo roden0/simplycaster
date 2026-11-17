@@ -145,7 +145,17 @@ function renderPodcast(p: PodcastView, navigate: Navigate, show: (p: PodcastView
   const feed = el("section");
   feed.className = "card";
   const generated = p.generatedAt === null ? t("neverGenerated") : t("generatedAt", { when: dateTime(p.generatedAt) });
-  feed.append(el("h2", t("feed")), copyableLink(p.feedUrl, t("feed")), el("p", generated));
+  const pageUrl = p.feedUrl.replace(/\/feed\.xml$/, "");
+  const page = el("a", t("publicPage"));
+  page.href = pageUrl;
+  page.target = "_blank";
+  const pages = el("p");
+  pages.append(page, " · ");
+  const json = el("a", t("jsonFeed"));
+  json.href = `${pageUrl}/feed.json`;
+  json.target = "_blank";
+  pages.append(json);
+  feed.append(el("h2", t("feed")), copyableLink(p.feedUrl, t("feed")), el("p", generated), pages);
   const gaps = missing(p);
   if (gaps.length) {
     const warn = el("p", t("podcastMissing", { fields: gaps.join(", ") }));
@@ -408,6 +418,13 @@ function episodeRow(p: PodcastView, e: EpisodeView, show: (p: PodcastView) => vo
   const actions = el("div");
   actions.className = "actions";
   const url = `${podcastUrl(p.slug)}/episodes/${encodeURIComponent(e.slug)}`;
+  if (e.live) {
+    const open = el("a", t("publicPage"));
+    open.href = `${p.feedUrl.replace(/\/feed\.xml$/, "")}/${encodeURIComponent(e.slug)}`;
+    open.target = "_blank";
+    open.className = "button";
+    actions.append(open);
+  }
   actions.append(
     button(t("edit"), () => episodeForm(p, e, show)),
     button(
