@@ -13,6 +13,7 @@ import { base, button, error, jsonRequest, load, passkeyProblem, reasonOf, regis
 import { dashboardPage } from "./backoffice-dashboard.ts";
 import { roomsPage } from "./backoffice-rooms.ts";
 import { accountsPage } from "./backoffice-accounts.ts";
+import { podcastPage, podcastsPage } from "./backoffice-podcasts.ts";
 
 const main = document.querySelector<HTMLElement>("#app")!;
 const header = el("header");
@@ -24,10 +25,26 @@ main.after(footer);
 applyLocale();
 document.title = t("backofficeTitle");
 
-type Page = { path: string; label: Parameters<typeof t>[0]; admin?: boolean; show: (me: Me) => HTMLElement[] };
+type Page = {
+  path: string;
+  label: Parameters<typeof t>[0];
+  admin?: boolean;
+  /** Only with PUBLIC_URL set (ADR-0013). */
+  publishing?: boolean;
+  /** Also answers `<path>/<item>`, handing it the item. */
+  nested?: boolean;
+  show: (me: Me, item: string) => HTMLElement[];
+};
 const pages: Page[] = [
   { path: "/backoffice", label: "dashboard", show: (me) => dashboardPage(me, navigate) },
   { path: "/backoffice/rooms", label: "rooms", show: roomsPage },
+  {
+    path: "/backoffice/podcasts",
+    label: "podcasts",
+    publishing: true,
+    nested: true,
+    show: (_, item) => (item ? podcastPage(item, navigate) : podcastsPage(navigate)),
+  },
   { path: "/backoffice/accounts", label: "accounts", admin: true, show: accountsPage },
 ];
 
@@ -44,12 +61,17 @@ addEventListener("popstate", () => render());
 function render() {
   if (!me) return;
   const signedIn = me;
-  const allowed = pages.filter((p) => !p.admin || signedIn.role === "admin");
-  const page = allowed.find((p) => p.path === location.pathname) ?? allowed[0];
-  if (page.path !== location.pathname) history.replaceState(null, "", page.path);
+  const allowed = pages.filter(
+    (p) => (!p.admin || signedIn.role === "admin") && (!p.publishing || signedIn.publishing),
+  );
+  const path = location.pathname;
+  const inside = (p: Page) => p.nested && path.startsWith(`${p.path}/`) && path.length > p.path.length + 1;
+  const page = allowed.find((p) => p.path === path || inside(p)) ?? allowed[0];
+  const item = inside(page) ? decodeURIComponent(path.slice(page.path.length + 1)) : "";
+  if (page.path !== path && !item) history.replaceState(null, "", page.path);
   error.textContent = "";
   renderHeader(allowed, page);
-  main.replaceChildren(...page.show(signedIn));
+  main.replaceChildren(...page.show(signedIn, item));
   document.title = `${t(page.label)} · ${t("backofficeTitle")}`;
 }
 

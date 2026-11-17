@@ -185,6 +185,7 @@ mod tests {
             webauthn: None,
             logins: Default::default(),
             registrations: Default::default(),
+            feeds: None,
         });
         let keys = session::Keys::new(b"test");
 

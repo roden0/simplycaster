@@ -3,7 +3,8 @@ import { t } from "./i18n.ts";
 import { el } from "./dom.ts";
 import type { Disk } from "./protocol/Disk.ts";
 import type { Me } from "./protocol/Me.ts";
-import { base, button, error, jsonRequest, load, registerPasskey } from "./backoffice-common.ts";
+import type { PodcastView } from "./protocol/PodcastView.ts";
+import { base, button, dateTime, error, jsonRequest, load, registerPasskey } from "./backoffice-common.ts";
 import { loadRooms } from "./backoffice-rooms.ts";
 
 /** Below this, a long Take or a few Episodes may not fit: whichever limit comes first. */
@@ -67,6 +68,33 @@ async function diskCard(target: HTMLElement) {
   target.replaceChildren(...parts);
 }
 
+/** When each feed was last generated: a scheduled Episode waits for the next one. */
+async function feedsCard(target: HTMLElement, navigate: (path: string) => void) {
+  const podcasts = await load<PodcastView[]>(`${base}/podcasts`);
+  if (!podcasts) return;
+  if (!podcasts.length) {
+    target.replaceChildren(el("p", t("noPodcasts")));
+    return;
+  }
+  const list = el("ul");
+  list.className = "plain";
+  for (const p of podcasts) {
+    const path = `/backoffice/podcasts/${encodeURIComponent(p.slug)}`;
+    const link = el("a", p.details.title);
+    link.href = path;
+    link.onclick = (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      navigate(path);
+    };
+    const when = p.generatedAt === null ? t("neverGenerated") : dateTime(p.generatedAt);
+    const item = el("li");
+    item.append(link, el("span", ` · ${when}`));
+    list.append(item);
+  }
+  target.replaceChildren(list);
+}
+
 /** Adding a second device is what makes losing one no emergency. */
 function accountCard(me: Me): HTMLElement {
   const status = el("p");
@@ -89,7 +117,13 @@ export function dashboardPage(me: Me, navigate: (path: string) => void): HTMLEle
   const disk = el("div");
   const grid = el("div");
   grid.className = "cards";
-  grid.append(card(t("openRooms"), rooms), card(t("disk"), disk), accountCard(me));
+  grid.append(card(t("openRooms"), rooms), card(t("disk"), disk));
+  if (me.publishing) {
+    const feeds = el("div");
+    grid.append(card(t("feeds"), feeds));
+    feedsCard(feeds, navigate);
+  }
+  grid.append(accountCard(me));
   openRoomsCard(rooms, navigate);
   diskCard(disk);
   return [el("h1", t("dashboard")), error, grid];

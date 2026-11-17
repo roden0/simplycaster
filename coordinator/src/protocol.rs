@@ -267,6 +267,14 @@ pub enum BackofficeError {
     InvalidEnrolment,
     /// `PUBLIC_URL` is not set, or too many sign-ins are under way.
     PasskeysUnavailable,
+    /// No such Podcast or Episode.
+    NotFound,
+    /// Publishing needs `PUBLIC_URL` (ADR-0013).
+    PublishingUnavailable,
+    /// An upload of the wrong type, or too large for its kind.
+    InvalidFile,
+    /// A required field of a Podcast or Episode is empty or too long.
+    InvalidDetails,
     /// The change could not be written to disk.
     NotSaved,
 }
@@ -301,6 +309,8 @@ pub struct Me {
     pub name: String,
     pub role: AccountRole,
     pub initial: bool,
+    /// `PUBLIC_URL` is set, so Podcasts can be published (ADR-0013).
+    pub publishing: bool,
 }
 
 /// Space on the disk that holds `DATA_DIR`, in bytes: Tracks and Episodes fill it without warning.
@@ -377,4 +387,97 @@ pub struct IceServer {
     #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential: Option<String>,
+}
+
+/// `itunes:type` of a Podcast.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ShowType {
+    #[default]
+    Episodic,
+    Serial,
+}
+
+/// `itunes:episodeType` of an Episode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum EpisodeType {
+    #[default]
+    Full,
+    Trailer,
+    Bonus,
+}
+
+/// What the backoffice edits of a Podcast: everything but its files and its slug.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PodcastDetails {
+    pub title: String,
+    pub description: String,
+    /// BCP 47, e.g. `es` or `en-US`.
+    pub language: String,
+    /// One of Apple's top-level categories.
+    pub category: String,
+    pub author: String,
+    /// `itunes:owner`: public in the feed; Apple writes to it to verify the Podcast.
+    pub owner_email: String,
+    pub explicit: bool,
+    pub show_type: ShowType,
+    pub copyright: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EpisodeDetails {
+    pub title: String,
+    /// Show notes: basic HTML.
+    pub notes: String,
+    /// ms since the Unix epoch. None: a draft; in the future: scheduled, in the feed once regenerated after it.
+    pub published_at: Option<f64>,
+    /// Seconds, read by the browser from the audio.
+    pub duration: Option<f64>,
+    /// None: the Podcast's.
+    pub explicit: Option<bool>,
+    pub episode_type: EpisodeType,
+    pub season: Option<u32>,
+    pub number: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct CreatePodcast {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PodcastView {
+    pub slug: String,
+    pub details: PodcastDetails,
+    pub cover: bool,
+    pub feed_url: String,
+    /// Last time its files were generated, ms since the Unix epoch.
+    pub generated_at: Option<f64>,
+    /// Its Creator or an Admin; any Account edits it.
+    pub can_delete: bool,
+    pub episodes: Vec<EpisodeView>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EpisodeView {
+    pub slug: String,
+    pub details: EpisodeDetails,
+    /// Size of the mp3; None until it is uploaded.
+    pub audio_bytes: Option<f64>,
+    pub image: bool,
+    pub transcript: bool,
+    /// In the feed as last generated.
+    pub live: bool,
 }

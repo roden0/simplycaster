@@ -156,7 +156,8 @@ button.danger {
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   padding: 0.375rem 0.5rem;
   border: 1px solid var(--border);
@@ -203,10 +204,6 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-}
-
-.contents {
-  display: contents;
 }
 
 /* Messages */
@@ -426,6 +423,80 @@ dialog .field select {
 dialog .actions {
   justify-content: flex-end;
   margin-top: 1rem;
+}
+
+/* Podcasts */
+textarea {
+  resize: vertical;
+}
+
+.stack {
+  max-width: 40rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.field + .hint,
+.stack > .hint,
+dialog .hint {
+  display: block;
+  margin: -0.5rem 0 0.75rem;
+}
+
+details.card {
+  margin: 1rem 0;
+}
+
+details.card > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+details.card[open] > summary {
+  margin-bottom: 1rem;
+}
+
+main > div > section.card {
+  margin: 1rem 0;
+}
+
+.back {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.badge.live {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge.live::before {
+  content: "● ";
+}
+
+.badge.scheduled::before {
+  content: "◷ ";
+}
+
+.badge.draft::before {
+  content: "○ ";
+}
+
+progress {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+dialog {
+  max-height: calc(100% - 2rem);
+  overflow-y: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

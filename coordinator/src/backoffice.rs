@@ -43,7 +43,7 @@ fn normalize(name: &str) -> String {
 
 /// The slug of a free-text Room name: "Mi programa S01E01 - temática" → "mi-programa-s01e01-tematica".
 /// May be empty or end up invalid; `valid_name` decides.
-fn slug(text: &str) -> String {
+pub(crate) fn slug(text: &str) -> String {
     let mut out = String::new();
     for c in text.to_lowercase().chars() {
         let c = match c {
@@ -321,6 +321,7 @@ mod tests {
             webauthn: None,
             logins: Default::default(),
             registrations: Default::default(),
+            feeds: None,
         });
         (state, dir)
     }
