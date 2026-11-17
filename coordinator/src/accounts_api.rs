@@ -211,9 +211,8 @@ pub async fn passkey_start(who: SignedIn, State(state): State<AppState>) -> Resu
 fn registration(state: &AppState, account: &Account, link: Option<String>) -> Result<PasskeyChallenge, Response> {
     let id = Uuid::parse_str(&account.id).expect("the Coordinator generates these ids");
     let known = account.passkeys.iter().map(|p| p.cred_id().clone()).collect();
-    let label = account.email.as_deref().unwrap_or(&account.name);
     let (mut options, registration) = passkeys(state)?
-        .start_passkey_registration(id, label, &account.name, Some(known))
+        .start_passkey_registration(id, &account.name, &account.name, Some(known))
         .map_err(|e| failed("registration start", e))?;
     // Sign-in names no user, so the authenticator must keep the credential discoverable.
     if let Some(selection) = options.public_key.authenticator_selection.as_mut() {

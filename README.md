@@ -39,6 +39,8 @@ Then open `https://<DOMAIN>/backoffice` and sign in with your `BACKOFFICE_TOKEN`
 
 If no Admin can sign in any more, remove the Admins from `data/accounts.json` and restart: the Initial Admin comes back.
 
+Account emails are not stored: `data/accounts.json` keeps only a fingerprint (an HMAC with the key in `data/email.key`) and a hint such as `r•••@gmail.com`, so the Accounts page shows the hint. Keep `email.key` in the backups with the rest of `./data`; without it, the emails would have to be typed in again.
+
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
 **Already running a reverse proxy** (Traefik, nginx, Coolify)? Remove the `caddy` service, publish `127.0.0.1:3000:3000` on `simplycaster`, and point your proxy at it. It must pass WebSockets through.
