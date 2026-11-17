@@ -28,6 +28,25 @@ pub struct Keys {
     decoding: DecodingKey,
 }
 
+/// A 256-bit secret kept in `data/<name>` (`0600`), created on first start.
+pub fn secret_file(data: &Path, name: &str) -> std::io::Result<String> {
+    let path = data.join(name);
+    match std::fs::read_to_string(&path) {
+        Ok(s) => Ok(s.trim().into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let s = format!("{}{}", crate::random_token(), crate::random_token());
+            std::fs::write(&path, &s)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+            }
+            Ok(s)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 impl Keys {
     pub fn new(secret: &[u8]) -> Keys {
         Keys {
@@ -39,22 +58,7 @@ impl Keys {
     /// The signing key in `data/session.key`, created on first start. Kept on disk so sessions
     /// survive a restart (ADR-0007); delete the file to sign everyone out. Never in a download.
     pub fn load_or_create(data: &Path) -> std::io::Result<Keys> {
-        let path = data.join(KEY_FILE);
-        let secret = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let s = format!("{}{}", crate::random_token(), crate::random_token()); // 256 bits
-                std::fs::write(&path, &s)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-                }
-                s
-            }
-            Err(e) => return Err(e),
-        };
-        Ok(Keys::new(secret.trim().as_bytes()))
+        Ok(Keys::new(secret_file(data, KEY_FILE)?.as_bytes()))
     }
 
     pub fn sign(&self, subject: &str, seconds: u64) -> String {

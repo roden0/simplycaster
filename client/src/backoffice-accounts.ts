@@ -36,7 +36,7 @@ function renderAccount(account: AccountView): HTMLElement {
   const role = el("span", t(ACCOUNT_ROLE_LABEL[account.role]));
   role.className = `badge ${account.role}`;
   const passkeys = t("accountPasskeys", { passkeys: account.passkeys });
-  const meta = el("span", account.email ? joined([account.email, passkeys]) : passkeys);
+  const meta = el("span", account.emailHint ? joined([account.emailHint, passkeys]) : passkeys);
   meta.className = "meta";
   const actions = el("div");
   actions.className = "actions";

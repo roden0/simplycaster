@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use webauthn_rs::prelude::{AuthenticationResult, Passkey};
@@ -13,6 +14,8 @@ use crate::protocol::{AccountRole, AccountView, BackofficeError};
 use crate::{now_ms, random_token, room_file};
 
 const FILE: &str = "accounts.json";
+/// The HMAC key of the email fingerprints (ADR-0012). Losing it makes every fingerprint useless.
+const EMAIL_KEY_FILE: &str = "email.key";
 const INITIAL_NAME: &str = "admin";
 const ENROLMENT_MS: f64 = 72.0 * 3600.0 * 1000.0;
 /// An unfinished passkey ceremony: as long as the browser's own timeout.
@@ -27,8 +30,14 @@ const MAX_EMAIL_BYTES: usize = 254;
 pub struct Account {
     pub id: String,
     pub name: String,
-    /// Unverified until something sends mail. Only the initial Admin has none.
-    pub email: Option<String>,
+    /// Only in files from before ADR-0012: turned into `email_print` and `email_hint` on load.
+    #[serde(default, skip_serializing)]
+    email: Option<String>,
+    /// HMAC of the normalised email, unique and unverified. Only the initial Admin has none.
+    #[serde(default)]
+    pub email_print: Option<String>,
+    #[serde(default)]
+    pub email_hint: Option<String>,
     pub role: AccountRole,
     /// The initial Admin, whose credential is `BACKOFFICE_TOKEN`.
     #[serde(default)]
@@ -47,7 +56,7 @@ impl Account {
         AccountView {
             id: self.id.clone(),
             name: self.name.clone(),
-            email: self.email.clone(),
+            email_hint: self.email_hint.clone(),
             role: self.role,
             initial: self.initial,
             passkeys: self.passkeys.len() as u32,
@@ -73,13 +82,36 @@ struct Store {
 pub struct Accounts {
     dir: PathBuf,
     store: Mutex<Store>,
+    email_key: Vec<u8>,
 }
 
 fn hash(token: &str) -> String {
-    Sha256::digest(token.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    hex(&Sha256::digest(token.as_bytes()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The form two spellings of one mailbox share. Only Gmail is known to ignore dots and `+tags`;
+/// elsewhere they can name different people, and a link would reach the wrong one.
+fn normalise(email: &str) -> String {
+    let email = email.trim().to_lowercase();
+    match email.rsplit_once('@') {
+        Some((user, "gmail.com" | "googlemail.com")) => {
+            let user = user.split('+').next().unwrap_or_default().replace('.', "");
+            format!("{user}@gmail.com")
+        }
+        _ => email,
+    }
+}
+
+/// Enough to recognise an address without keeping it: `r•••@gmail.com`.
+fn hint(email: &str) -> String {
+    let email = email.trim().to_lowercase();
+    let (user, domain) = email.rsplit_once('@').unwrap_or((&email, ""));
+    let first: String = user.chars().take(1).collect();
+    format!("{first}•••@{domain}")
 }
 
 fn valid_name(name: &str) -> bool {
@@ -103,17 +135,34 @@ impl Accounts {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Store::default(),
             Err(e) => return Err(format!("{FILE}: {e}")),
         };
+        let email_key = crate::session::secret_file(dir, EMAIL_KEY_FILE)
+            .map_err(|e| format!("{EMAIL_KEY_FILE}: {e}"))?
+            .into_bytes();
         let accounts = Accounts {
             dir: dir.into(),
             store: Mutex::new(store),
+            email_key,
         };
         {
             let mut store = accounts.store.lock().unwrap();
+            let mut migrated = false;
+            for account in &mut store.accounts {
+                if let Some(email) = account.email.take() {
+                    account.email_print = Some(accounts.print(&email));
+                    account.email_hint = Some(hint(&email));
+                    migrated = true;
+                }
+            }
+            if migrated {
+                accounts.save(&store)?;
+            }
             if !store.accounts.iter().any(|a| a.role == AccountRole::Admin) {
                 store.accounts.push(Account {
                     id: uuid::Uuid::now_v7().to_string(),
                     name: INITIAL_NAME.into(),
                     email: None,
+                    email_print: None,
+                    email_hint: None,
                     role: AccountRole::Admin,
                     initial: true,
                     passkeys: vec![],
@@ -122,6 +171,13 @@ impl Accounts {
             }
         }
         Ok(accounts)
+    }
+
+    /// The fingerprint an email is found by.
+    fn print(&self, email: &str) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.email_key).expect("HMAC takes any key");
+        mac.update(normalise(email).as_bytes());
+        hex(&mac.finalize().into_bytes())
     }
 
     fn save(&self, store: &Store) -> Result<(), String> {
@@ -145,22 +201,25 @@ impl Accounts {
 
     /// A new Account and the secret of its enrolment link.
     pub fn create(&self, name: &str, email: &str, role: AccountRole) -> Result<String, BackofficeError> {
-        let (name, email) = (name.trim(), email.trim().to_lowercase());
+        let (name, email) = (name.trim(), email.trim());
         if !valid_name(name) {
             return Err(BackofficeError::InvalidName);
         }
-        if !valid_email(&email) {
+        if !valid_email(email) {
             return Err(BackofficeError::InvalidEmail);
         }
+        let print = self.print(email);
         let mut store = self.store.lock().unwrap();
-        if store.accounts.iter().any(|a| a.email.as_deref() == Some(&email)) {
+        if store.accounts.iter().any(|a| a.email_print.as_deref() == Some(&print)) {
             return Err(BackofficeError::EmailTaken);
         }
         let id = uuid::Uuid::now_v7().to_string();
         store.accounts.push(Account {
             id: id.clone(),
             name: name.into(),
-            email: Some(email),
+            email: None,
+            email_print: Some(print),
+            email_hint: Some(hint(email)),
             role,
             initial: false,
             passkeys: vec![],
@@ -345,7 +404,11 @@ mod tests {
         let token = accounts.create("Ana", "ana@example.com", AccountRole::Host).unwrap();
         let path = dir.join(FILE);
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-        assert!(!std::fs::read_to_string(&path).unwrap().contains(&token));
+        let json = std::fs::read_to_string(&path).unwrap();
+        assert!(!json.contains(&token));
+        assert!(!json.contains("ana@") && json.contains("a•••@example.com"));
+        let key = dir.join(EMAIL_KEY_FILE);
+        assert_eq!(std::fs::metadata(&key).unwrap().permissions().mode() & 0o777, 0o600);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -368,6 +431,38 @@ mod tests {
         assert_eq!(
             accounts.create("  ", "x@y", AccountRole::Host),
             Err(BackofficeError::InvalidName)
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn gmail_spellings_are_one_mailbox_and_other_providers_keep_theirs() {
+        assert_eq!(normalise(" R.Od+news@GoogleMail.com "), "rod@gmail.com");
+        assert_eq!(normalise("r.od+x@example.com"), "r.od+x@example.com");
+        let dir = folder();
+        let accounts = Accounts::load_or_create(&dir).unwrap();
+        accounts.create("Rod", "rod@gmail.com", AccountRole::Host).unwrap();
+        assert_eq!(
+            accounts.create("Otro", "r.o.d+podcast@googlemail.com", AccountRole::Host),
+            Err(BackofficeError::EmailTaken)
+        );
+        accounts.create("Ana", "a.na@example.com", AccountRole::Host).unwrap();
+        accounts.create("Ana 2", "ana@example.com", AccountRole::Host).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn plain_emails_from_older_files_become_fingerprints_on_load() {
+        let dir = folder();
+        let old = r#"{"accounts":[{"id":"01a1c17a-b809-7108-a941-4cc0446b0272","name":"Ana","email":"ana@example.com","role":"admin"}],"enrolments":[]}"#;
+        std::fs::write(dir.join(FILE), old).unwrap();
+        let accounts = Accounts::load_or_create(&dir).unwrap();
+        let json = std::fs::read_to_string(dir.join(FILE)).unwrap();
+        assert!(!json.contains("ana@example.com"));
+        assert_eq!(accounts.views()[0].email_hint.as_deref(), Some("a•••@example.com"));
+        assert_eq!(
+            accounts.create("Otra", "Ana@Example.com", AccountRole::Host),
+            Err(BackofficeError::EmailTaken)
         );
         std::fs::remove_dir_all(dir).unwrap();
     }

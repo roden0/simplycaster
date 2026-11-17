@@ -296,7 +296,8 @@ pub enum AccountRole {
 pub struct AccountView {
     pub id: String,
     pub name: String,
-    pub email: Option<String>,
+    /// Enough to recognise the email (`r•••@gmail.com`); the address itself is not kept (ADR-0012).
+    pub email_hint: Option<String>,
     pub role: AccountRole,
     /// The initial Admin, who signs in with `BACKOFFICE_TOKEN`.
     pub initial: bool,
