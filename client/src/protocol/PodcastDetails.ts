@@ -16,4 +16,8 @@ category: string, author: string,
 /**
  * `itunes:owner`: public in the feed; Apple writes to it to verify the Podcast.
  */
-ownerEmail: string, explicit: boolean, showType: ShowType, copyright: string, };
+ownerEmail: string, explicit: boolean, showType: ShowType, copyright: string, 
+/**
+ * Feed, pages and files only with a Subscription key; absent in Podcasts saved before it.
+ */
+private: boolean, };

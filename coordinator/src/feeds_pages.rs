@@ -207,6 +207,7 @@ fn head(p: &Podcast, base: &str, h: Head) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{description}">
+{robots}
 <link rel="canonical" href="{page_url}">
 <link rel="alternate" type="application/rss+xml" title="{podcast}" href="{base}/feed.xml">
 <link rel="alternate" type="application/feed+json" title="{podcast}" href="{base}/feed.json">
@@ -225,6 +226,11 @@ fn head(p: &Podcast, base: &str, h: Head) -> String {
         page_url = esc(page_url),
         podcast = esc(&p.details.title),
         base = esc(base),
+        robots = if p.details.private {
+            "<meta name=\"robots\" content=\"noindex\">"
+        } else {
+            ""
+        },
     );
     if let Some(image) = image {
         h.push_str(&format!("<meta property=\"og:image\" content=\"{}\">\n", esc(image)));

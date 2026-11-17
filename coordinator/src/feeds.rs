@@ -1,13 +1,18 @@
 //! Feed Manager (ADR-0013): Podcasts and their Episodes, kept in `DATA_DIR/podcasts/<slug>/`, and the
 //! static files published from them. Apart from the Coordinator: nothing here knows about Rooms.
 
+use std::collections::HashMap;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+use sha2::{Digest, Sha256};
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
     BackofficeError, EpisodeDetails, EpisodeType, EpisodeView, PodcastDetails, PodcastView, ShowType,
+    SubscriptionKeyView,
 };
 use crate::{feeds_pages, room_file};
 
@@ -16,6 +21,13 @@ pub const FEED: &str = "feed.xml";
 pub const FEED_JSON: &str = "feed.json";
 /// The Podcast's page, served at `/podcasts/<slug>`.
 pub const INDEX: &str = "index.html";
+/// Stands for the Subscription key in the files of a private Podcast; replaced when serving them, so
+/// one set of files serves every key and creating or revoking one regenerates nothing.
+pub const KEY_MARKER: &str = "__SUBSCRIPTION_KEY__";
+/// Failed requests an address may make in `FAILURE_WINDOW_MS` before it gets 429s.
+const MAX_FAILURES: u32 = 30;
+const FAILURE_WINDOW_MS: f64 = 10.0 * 60_000.0;
+const DAY_MS: f64 = 86_400_000.0;
 /// Episode slugs that would collide with the Podcast's own files.
 const RESERVED: [&str; 3] = ["feed", "cover", "index"];
 /// `podcast:guid` namespace of the Podcasting 2.0 spec.
@@ -78,6 +90,33 @@ impl Episode {
     }
 }
 
+/// Access to a private Podcast (ADR-0013). Only the hash is kept: the key is shown once.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionKey {
+    pub id: String,
+    pub name: String,
+    /// `sha256:<hex>`: the prefix lets another algorithm come later without invalidating these.
+    pub hash: String,
+    pub created_at: f64,
+}
+
+fn key_hash(secret: &str) -> String {
+    let hex: String = Sha256::digest(secret.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("sha256:{hex}")
+}
+
+/// When a key was used and from where; in memory only.
+// shortcut: lost on restart, so a key looks unused until it is used again; persist it if that matters.
+#[derive(Default)]
+struct Usage {
+    last: f64,
+    addresses: Vec<(IpAddr, f64)>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Podcast {
@@ -91,6 +130,8 @@ pub struct Podcast {
     #[serde(default)]
     pub published: Vec<String>,
     pub episodes: Vec<Episode>,
+    #[serde(default)]
+    pub keys: Vec<SubscriptionKey>,
 }
 
 pub struct Feeds {
@@ -98,6 +139,16 @@ pub struct Feeds {
     /// `PUBLIC_URL` without a trailing slash: feeds need absolute URLs.
     public_url: String,
     podcasts: Mutex<Vec<Podcast>>,
+    /// By key id.
+    usage: Mutex<HashMap<String, Usage>>,
+    /// Failed public requests by address: (start of the window, count).
+    failures: Mutex<HashMap<IpAddr, (f64, u32)>>,
+}
+
+/// A public file to serve, and the key to write into it when its Podcast is private.
+pub struct Served {
+    pub path: PathBuf,
+    pub key: Option<String>,
 }
 
 impl Feeds {
@@ -119,6 +170,8 @@ impl Feeds {
             dir,
             public_url: public_url.trim_end_matches('/').to_string(),
             podcasts: Mutex::new(podcasts),
+            usage: Default::default(),
+            failures: Default::default(),
         })
     }
 
@@ -147,6 +200,24 @@ impl Feeds {
             details: p.details.clone(),
             cover: p.cover.is_some(),
             feed_url: format!("{}/{FEED}", self.podcast_url(&p.slug)),
+            keys: {
+                let usage = self.usage.lock().unwrap();
+                let since = crate::now_ms() - DAY_MS;
+                p.keys
+                    .iter()
+                    .map(|k| {
+                        let used = usage.get(&k.id);
+                        SubscriptionKeyView {
+                            id: k.id.clone(),
+                            name: k.name.clone(),
+                            created_at: k.created_at,
+                            last_used_at: used.map(|u| u.last),
+                            addresses: used
+                                .map_or(0, |u| u.addresses.iter().filter(|(_, t)| *t >= since).count() as u32),
+                        }
+                    })
+                    .collect()
+            },
             generated_at: p.generated_at,
             can_delete: can_delete(p.creator.as_deref()),
             episodes: p
@@ -205,6 +276,7 @@ impl Feeds {
             generated_at: None,
             published: vec![],
             episodes: vec![],
+            keys: vec![],
         };
         self.save(&podcast)?;
         podcasts.push(podcast);
@@ -357,14 +429,87 @@ impl Feeds {
         result
     }
 
-    /// A file anyone may download: one listed at the last generation, so never a draft's.
-    pub fn public_file(&self, slug: &str, file: &str) -> Option<PathBuf> {
+    /// A file listed at the last generation, so never a draft's. A private Podcast's only with one of
+    /// its keys; a public one ignores the key, so subscribers keep working if it stops being private.
+    pub fn public_file(&self, slug: &str, file: &str, key: Option<&str>, from: IpAddr) -> Option<Served> {
         let podcasts = self.podcasts.lock().unwrap();
         let p = podcasts.iter().find(|p| p.slug == slug)?;
-        p.published
-            .iter()
-            .any(|f| f == file)
-            .then(|| self.folder(slug).join(file))
+        if !p.published.iter().any(|f| f == file) {
+            return None;
+        }
+        let path = self.folder(slug).join(file);
+        if !p.details.private {
+            return Some(Served { path, key: None });
+        }
+        let key = key?;
+        let hash = key_hash(key);
+        let found = p.keys.iter().find(|k| k.hash == hash)?;
+        let now = crate::now_ms();
+        let mut usage = self.usage.lock().unwrap();
+        let u = usage.entry(found.id.clone()).or_default();
+        u.last = now;
+        u.addresses.retain(|(ip, t)| *t >= now - DAY_MS && *ip != from);
+        u.addresses.push((from, now));
+        Some(Served {
+            path,
+            key: Some(key.to_string()),
+        })
+    }
+
+    /// True while `from` made too many failed requests lately: wrong keys or addresses being tried.
+    pub fn limited(&self, from: IpAddr) -> bool {
+        let failures = self.failures.lock().unwrap();
+        failures
+            .get(&from)
+            .is_some_and(|(start, n)| *n >= MAX_FAILURES && crate::now_ms() - start < FAILURE_WINDOW_MS)
+    }
+
+    pub fn failed(&self, from: IpAddr) {
+        let now = crate::now_ms();
+        let mut failures = self.failures.lock().unwrap();
+        // Bounded: old windows go before a crowd of addresses can grow it without limit.
+        if failures.len() > 10_000 {
+            failures.retain(|_, (start, _)| now - *start < FAILURE_WINDOW_MS);
+        }
+        let entry = failures.entry(from).or_insert((now, 0));
+        if now - entry.0 >= FAILURE_WINDOW_MS {
+            *entry = (now, 0);
+        }
+        entry.1 += 1;
+    }
+
+    /// A new key for a private Podcast, and its feed address: the only time the secret leaves.
+    pub fn create_key(&self, slug: &str, name: &str) -> Result<String, BackofficeError> {
+        let name = name.trim().to_string();
+        if name.is_empty() || !valid_text(&name, MAX_TEXT) {
+            return Err(BackofficeError::InvalidDetails);
+        }
+        let secret = crate::random_token();
+        let key = SubscriptionKey {
+            id: uuid::Uuid::now_v7().to_string(),
+            name,
+            hash: key_hash(&secret),
+            created_at: crate::now_ms(),
+        };
+        self.change(slug, |p| {
+            p.keys.push(key);
+            Ok(())
+        })?;
+        Ok(format!("{}/k/{secret}/{FEED}", self.podcast_url(slug)))
+    }
+
+    /// Revoking takes effect on the key's next request.
+    pub fn revoke_key(&self, slug: &str, id: &str) -> Result<(), BackofficeError> {
+        self.change(slug, |p| {
+            let before = p.keys.len();
+            p.keys.retain(|k| k.id != id);
+            if p.keys.len() == before {
+                return Err(BackofficeError::NotFound);
+            }
+            Ok(())
+        })?;
+        self.usage.lock().unwrap().remove(id);
+        Ok(())
     }
 
     fn save(&self, p: &Podcast) -> Result<(), BackofficeError> {
@@ -378,9 +523,15 @@ impl Feeds {
     /// Writes the feed and saves the Podcast with the list of what is now public.
     fn generate(&self, p: &mut Podcast) -> Result<(), BackofficeError> {
         let now = crate::now_ms();
-        let url = self.podcast_url(&p.slug);
+        let public = self.podcast_url(&p.slug);
+        // Every address in a private Podcast's files carries the key, so apps keep it in each request.
+        let url = if p.details.private {
+            format!("{public}/k/{KEY_MARKER}")
+        } else {
+            public.clone()
+        };
         let mut files = vec![
-            (FEED.to_string(), feed_xml(p, &url, now)),
+            (FEED.to_string(), feed_xml(p, &url, &public, now)),
             (FEED_JSON.to_string(), feeds_pages::feed_json(p, &url, now)),
             (INDEX.to_string(), feeds_pages::podcast_page(p, &url, now)),
         ];
@@ -538,12 +689,15 @@ fn yes_no(explicit: bool) -> &'static str {
 }
 
 /// RSS 2.0 with the `itunes` and `podcast` namespaces: what Apple Podcasts and the rest read.
-fn feed_xml(p: &Podcast, url: &str, now: f64) -> String {
+/// `url` is where its files are (with the key marker if private); `public` names the Podcast for good.
+fn feed_xml(p: &Podcast, url: &str, public: &str, now: f64) -> String {
     let d = &p.details;
     let feed_url = format!("{url}/{FEED}");
+    // From the address without a key: the same for every subscriber, and stable if it turns private.
+    let named = format!("{public}/{FEED}");
     let guid = uuid::Uuid::new_v5(
         &PODCAST_NAMESPACE,
-        feed_url.split_once("://").map_or(&*feed_url, |(_, r)| r).as_bytes(),
+        named.split_once("://").map_or(&*named, |(_, r)| r).as_bytes(),
     );
     let mut x = String::new();
     x.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -600,6 +754,11 @@ fn feed_xml(p: &Podcast, url: &str, now: f64) -> String {
         },
     );
     tag(&mut x, "podcast:guid", &guid.to_string());
+    if d.private {
+        // Keeps directories from listing it, and from importing it elsewhere.
+        tag(&mut x, "podcast:locked", "yes");
+        tag(&mut x, "itunes:block", "Yes");
+    }
 
     for e in feeds_pages::live(p, now) {
         let ed = &e.details;
@@ -658,6 +817,8 @@ fn feed_xml(p: &Podcast, url: &str, now: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
     fn feeds() -> (Feeds, PathBuf) {
         let dir = std::env::temp_dir().join(crate::random_token());
@@ -722,15 +883,15 @@ mod tests {
         assert!(xml.contains("<![CDATA[<p>Hi & bye</p>]]>"));
         assert!(xml.contains("<itunes:duration>2745</itunes:duration>"));
         assert!(xml.contains("<itunes:image href=\"https://pod.example/podcasts/show/cover.png\"/>"));
-        assert!(f.public_file(&slug, "live.mp3").is_some());
-        assert!(f.public_file(&slug, "draft.mp3").is_none());
-        assert!(f.public_file(&slug, "later.mp3").is_none());
-        assert!(f.public_file(&slug, "podcast.json").is_none());
-        assert!(f.public_file(&slug, "cover.png").is_some());
+        assert!(f.public_file(&slug, "live.mp3", None, IP).is_some());
+        assert!(f.public_file(&slug, "draft.mp3", None, IP).is_none());
+        assert!(f.public_file(&slug, "later.mp3", None, IP).is_none());
+        assert!(f.public_file(&slug, "podcast.json", None, IP).is_none());
+        assert!(f.public_file(&slug, "cover.png", None, IP).is_some());
         for page in ["live.html", FEED_JSON, INDEX] {
-            assert!(f.public_file(&slug, page).is_some(), "{page}");
+            assert!(f.public_file(&slug, page, None, IP).is_some(), "{page}");
         }
-        assert!(f.public_file(&slug, "draft.html").is_none());
+        assert!(f.public_file(&slug, "draft.html", None, IP).is_none());
         let json: serde_json::Value =
             serde_json::from_slice(&std::fs::read(f.folder(&slug).join(FEED_JSON)).unwrap()).unwrap();
         assert_eq!(json["items"].as_array().unwrap().len(), 1);
@@ -748,7 +909,7 @@ mod tests {
         upload(&f, &slug, None, Upload::Cover, "jpg", b"jpg");
         assert!(!f.folder(&slug).join("cover.png").exists());
         let again = Feeds::load(&dir, "https://pod.example").unwrap();
-        assert!(again.public_file(&slug, "cover.jpg").is_some());
+        assert!(again.public_file(&slug, "cover.jpg", None, IP).is_some());
     }
 
     #[test]
@@ -759,9 +920,67 @@ mod tests {
         upload(&f, &slug, Some(&ep), Upload::Audio, "mp3", b"ID3");
         f.delete_episode(&slug, &ep).unwrap();
         assert!(!f.folder(&slug).join("uno.mp3").exists());
-        assert!(f.public_file(&slug, "uno.mp3").is_none());
+        assert!(f.public_file(&slug, "uno.mp3", None, IP).is_none());
         f.delete(&slug).unwrap();
         assert!(!f.folder(&slug).exists());
+    }
+
+    #[test]
+    fn a_private_podcast_needs_a_valid_key_and_writes_it_into_its_files() {
+        let (f, _) = feeds();
+        let slug = f.create("Show", "a").unwrap();
+        let ep = f.create_episode(&slug, details("Uno", Some(0.0))).unwrap();
+        upload(&f, &slug, Some(&ep), Upload::Audio, "mp3", b"ID3");
+        let mut d = PodcastDetails {
+            title: "Show".into(),
+            private: true,
+            ..Default::default()
+        };
+        f.edit(&slug, d.clone()).unwrap();
+        let url = f.create_key(&slug, "Ana").unwrap();
+        let secret = url.split("/k/").nth(1).unwrap().split('/').next().unwrap().to_string();
+        assert_eq!(url, format!("https://pod.example/podcasts/show/k/{secret}/feed.xml"));
+
+        assert!(f.public_file(&slug, "uno.mp3", None, IP).is_none());
+        assert!(f.public_file(&slug, "uno.mp3", Some("wrong"), IP).is_none());
+        let served = f.public_file(&slug, FEED, Some(&secret), IP).unwrap();
+        assert_eq!(served.key.as_deref(), Some(secret.as_str()));
+        let xml = std::fs::read_to_string(&served.path).unwrap();
+        assert!(xml.contains(&format!("/podcasts/show/k/{KEY_MARKER}/uno.mp3")));
+        assert!(xml.contains("<podcast:locked>yes</podcast:locked>"));
+        // The guid names the Podcast, not one subscriber's address.
+        assert!(!xml.contains(&secret));
+
+        let view = f.get(&slug, |_| true).unwrap();
+        assert_eq!(view.keys[0].addresses, 1);
+        assert!(view.keys[0].last_used_at.is_some());
+        let stored = std::fs::read_to_string(f.folder(&slug).join(FILE)).unwrap();
+        assert!(!stored.contains(&secret), "only the hash is kept");
+
+        f.revoke_key(&slug, &view.keys[0].id).unwrap();
+        assert!(f.public_file(&slug, FEED, Some(&secret), IP).is_none());
+
+        // Public again: keys are ignored and old keyed addresses keep working.
+        d.private = false;
+        f.edit(&slug, d).unwrap();
+        assert!(
+            f.public_file(&slug, "uno.mp3", Some("anything"), IP)
+                .unwrap()
+                .key
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn too_many_failures_limit_an_address() {
+        let (f, _) = feeds();
+        let other = IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 2));
+        for _ in 0..MAX_FAILURES {
+            assert!(!f.limited(IP));
+            f.failed(IP);
+        }
+        assert!(f.limited(IP));
+        assert!(!f.limited(other));
     }
 
     #[test]
