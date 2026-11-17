@@ -472,6 +472,7 @@ mod tests {
             webauthn: None,
             logins: Default::default(),
             registrations: Default::default(),
+            feeds: None,
         });
         (state, dir, ana, bea)
     }

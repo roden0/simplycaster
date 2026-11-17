@@ -11,6 +11,7 @@ Video-call recordings capture what the network delivered: dropouts, compression 
 - **Local recording.** Each browser records its microphone (Opus, in Ogg) and keeps it in the browser's own storage until it is safely on the server.
 - **Progressive, resumable upload.** Audio goes up while you record; if the connection drops, it resumes where it stopped.
 - **Synchronised Tracks.** The Coordinator gives every browser a reference clock, so the Tracks of a Take line up. Clock drift is corrected when converting.
+- **Publishing.** Once edited, upload each finished episode as an mp3 and the instance serves your podcast's feed for Apple Podcasts, Spotify and any other app (see [Publishing podcasts](#publishing-podcasts)).
 - **Delivery.** Download the original Ogg files, or, for a closed Room, 24-bit FLAC: one file per Participant and Take, starting at the Sync tone and as long as the Take, with drift corrected and silence where a browser lost audio or reconnected. Drop them all at zero in your editor.
 
 The server (the *Coordinator*, one Rust binary) only coordinates connections, keeps the reference clock and stores the audio. It never processes audio during recording. Editing and mixing happen outside, in professional software.
@@ -41,6 +42,40 @@ If no Admin can sign in any more, remove the Admins from `data/accounts.json` an
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
 **Already running a reverse proxy** (Traefik, nginx, Coolify)? Remove the `caddy` service, publish `127.0.0.1:3000:3000` on `simplycaster`, and point your proxy at it. It must pass WebSockets through.
+
+## Publishing podcasts
+
+Recording and publishing are two separate things: Rooms give you the source Tracks; once you have edited and mixed an episode in your own software, you upload the finished mp3 to a Podcast, and the instance serves its feed. Nothing links an Episode to a Room.
+
+Publishing needs `PUBLIC_URL` (feeds carry absolute addresses); without it the Podcasts section does not appear. Any Account can create a Podcast and edit any Podcast, its details and its Episodes; only its creator or an Admin can delete it.
+
+**1. Create the Podcast.** In the backoffice, Podcasts → New Podcast, with its name. Its address comes from the name and never changes, even if you rename it, because subscribers follow that address: `Charlas de Código` becomes `https://<DOMAIN>/podcasts/charlas-de-codigo/`.
+
+**2. Fill in its details.** Open it and complete *Podcast details*. Apple Podcasts requires a description, language (`es`, `en-US`…), category, author, owner email and cover; the page lists whatever is still missing.
+
+- The **cover** is a square JPEG or PNG from 1400 to 3000 pixels a side.
+- The **owner email** is public in the feed: Apple writes to it to confirm the Podcast is yours. Use an address meant for that.
+- **Type**: *Episodic* lists the newest first (talk shows, news); *Serial* in order (a story told in seasons).
+
+**3. Add Episodes.** New Episode, with:
+
+| Field | |
+|---|---|
+| Title | Required. The Episode's address comes from it and never changes. |
+| Show notes | Basic HTML: paragraphs, links, lists. |
+| Publication date | Empty: a draft, not in the feed. In the past: in the feed. In the future: scheduled (see below). |
+| Audio | The finished mp3, up to 500 MB. Its duration is read by your browser. |
+| Explicit, type, season, number | Optional; explicit follows the Podcast unless you set it. |
+| Image | Optional square artwork for this Episode, same rules as the cover. |
+| Transcript | Optional, WebVTT (`.vtt`) or SubRip (`.srt`); Apple Podcasts shows it alongside the audio. |
+
+Edit an Episode to change its details or replace any of its files: its identity in the feed stays the same, so apps update it instead of showing it twice.
+
+**4. The feed.** It is a static file, regenerated on every change; the Podcast page shows its address and when it was last generated. A scheduled Episode enters the feed the next time it is regenerated after its date, not at its exact time: press *Regenerate feed* then. Only what is in the feed can be downloaded: drafts and scheduled Episodes are not reachable from outside.
+
+**5. Submit it.** Paste the feed address (`https://<DOMAIN>/podcasts/<podcast>/feed.xml`) into [Apple Podcasts Connect](https://podcastsconnect.apple.com), [Spotify for Creators](https://creators.spotify.com) or the [Podcast Index](https://podcastindex.org/add); most other apps (Pocket Casts, Overcast, AntennaPod) find it through those or accept the address directly.
+
+The files live in `./data/podcasts/<podcast>/` and go into the backups with everything else, so budget disk space for the mp3s too: the Dashboard shows what is left. Behind your own reverse proxy, allow uploads of at least 500 MB (for example `client_max_body_size 500m;` in nginx).
 
 ## Backups
 
@@ -86,7 +121,7 @@ Avoid `latest`: pin a version and upgrade when you choose to.
 | Variable | Default | |
 |---|---|---|
 | `BACKOFFICE_TOKEN` | (required) | Credential of the Initial Admin, at least 32 characters. |
-| `PUBLIC_URL` | `https://<DOMAIN>` in Compose | Address people use, for passkeys, which belong to this domain: changing it means registering them again. Without it only the token works. |
+| `PUBLIC_URL` | `https://<DOMAIN>` in Compose | Address people use, for passkeys, which belong to this domain (changing it means registering them again), and for the feeds of published Podcasts. Without it only the token works, and Podcasts are off. |
 | `TURN_PUBLIC_IP` | empty | Public IPv4 for TURN. Empty: only direct connections. |
 | `TURN_PORT` | `3478` | STUN/TURN UDP port. |
 | `TURN_RELAY_PORTS` | `49160-49199` | UDP relay range. |

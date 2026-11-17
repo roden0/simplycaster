@@ -3,6 +3,8 @@ mod accounts_api;
 mod backoffice;
 mod client_files;
 mod download;
+mod feeds;
+mod feeds_api;
 mod flac;
 mod live;
 mod protocol;
@@ -24,7 +26,7 @@ use std::{
 use axum::http::{HeaderValue, header};
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -75,6 +77,8 @@ pub struct Coordinator {
     webauthn: Option<webauthn_rs::prelude::Webauthn>,
     logins: accounts_api::Logins,
     registrations: accounts_api::Registrations,
+    /// The Feed Manager (ADR-0013); `None` without `PUBLIC_URL`, since feeds need absolute URLs.
+    feeds: Option<feeds::Feeds>,
 }
 
 type AppState = Arc<Coordinator>;
@@ -207,6 +211,9 @@ async fn main() {
             .inspect_err(|e| eprintln!("passkeys are off: {e}"))
             .ok()
     });
+    let feeds = public_url
+        .as_deref()
+        .map(|url| feeds::Feeds::load(&data, url).unwrap_or_else(|e| panic!("cannot read the Podcasts: {e}")));
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
@@ -219,11 +226,13 @@ async fn main() {
         webauthn,
         logins: Default::default(),
         registrations: Default::default(),
+        feeds,
     });
     let passkeys = state.webauthn.is_some();
     let live_info = state.turn.as_ref().map(live::Turn::describe);
 
     let api = "/api/backoffice/rooms";
+    let pods = "/api/backoffice/podcasts";
     let app = Router::new()
         .route("/ws", get(ws::ws_handler))
         .route("/takes/{take}/uploads", post(tus::create))
@@ -234,6 +243,8 @@ async fn main() {
         .route("/backoffice", get(client_files::backoffice))
         .route("/backoffice/rooms", get(client_files::backoffice))
         .route("/backoffice/accounts", get(client_files::backoffice))
+        .route("/backoffice/podcasts", get(client_files::backoffice))
+        .route("/backoffice/podcasts/{slug}", get(client_files::backoffice))
         // Old links (/backoffice/<token>, ADR-0009) and a trailing slash would fall to the Participant
         // page: send them to the sign-in, which also drops the token from the address bar.
         .route("/backoffice/", get(to_backoffice))
@@ -277,12 +288,30 @@ async fn main() {
         .route(&format!("{api}/{{id}}/zip"), get(backoffice::zip))
         .route(&format!("{api}/{{id}}/flac"), post(backoffice::convert_flac))
         .route(&format!("{api}/{{id}}/flac/zip"), get(backoffice::flac_zip))
+        .route(pods, get(feeds_api::list).post(feeds_api::create))
+        .route(
+            &format!("{pods}/{{slug}}"),
+            get(feeds_api::get).put(feeds_api::edit).delete(feeds_api::delete),
+        )
+        .route(&format!("{pods}/{{slug}}/feed"), post(feeds_api::regenerate))
+        .route(&format!("{pods}/{{slug}}/cover"), put(feeds_api::upload_cover))
+        .route(&format!("{pods}/{{slug}}/episodes"), post(feeds_api::create_episode))
+        .route(
+            &format!("{pods}/{{slug}}/episodes/{{ep}}"),
+            put(feeds_api::edit_episode).delete(feeds_api::delete_episode),
+        )
+        .route(
+            &format!("{pods}/{{slug}}/episodes/{{ep}}/{{kind}}"),
+            put(feeds_api::upload_episode_file),
+        )
         .fallback(client_files::fallback)
         // Revalidate on every load so a new build is never hidden behind a cached index.html.
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),
         ))
+        // After the no-cache layer: published files set their own caching.
+        .route("/podcasts/{slug}/{file}", get(feeds_api::public_file))
         .with_state(state);
 
     let addr = SocketAddr::new(ip, port);

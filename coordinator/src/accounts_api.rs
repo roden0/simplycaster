@@ -84,9 +84,14 @@ pub fn webauthn(public_url: &str) -> Result<Webauthn, String> {
 
 pub fn error(e: BackofficeError) -> Response {
     let status = match e {
-        BackofficeError::InvalidName | BackofficeError::InvalidEmail => StatusCode::BAD_REQUEST,
-        BackofficeError::InvalidEnrolment => StatusCode::NOT_FOUND,
-        BackofficeError::PasskeysUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+        BackofficeError::InvalidName
+        | BackofficeError::InvalidEmail
+        | BackofficeError::InvalidDetails
+        | BackofficeError::InvalidFile => StatusCode::BAD_REQUEST,
+        BackofficeError::InvalidEnrolment | BackofficeError::NotFound => StatusCode::NOT_FOUND,
+        BackofficeError::PasskeysUnavailable | BackofficeError::PublishingUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
         BackofficeError::NotSaved => StatusCode::INTERNAL_SERVER_ERROR,
         _ => StatusCode::CONFLICT,
     };
@@ -139,6 +144,7 @@ pub async fn me(who: SignedIn, State(state): State<AppState>) -> Result<Json<Me>
         name: account.name,
         role: account.role,
         initial: account.initial,
+        publishing: state.feeds.is_some(),
     }))
 }
 

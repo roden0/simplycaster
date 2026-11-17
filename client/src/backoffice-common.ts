@@ -26,6 +26,10 @@ const ERROR_KEY: Record<BackofficeError, MessageKey> = {
   invalidEnrolment: "errorInvalidEnrolment",
   passkeysUnavailable: "errorPasskeysUnavailable",
   notSaved: "errorNotSaved",
+  notFound: "errorNotFound",
+  publishingUnavailable: "errorPublishingUnavailable",
+  invalidFile: "errorInvalidFile",
+  invalidDetails: "errorInvalidDetails",
 };
 
 /** The page-wide error line, above the content of every page. */
@@ -141,16 +145,15 @@ export function pageHead(title: string, ...actions: HTMLElement[]): HTMLElement 
 }
 
 /**
- * A modal form: `submit` returns true when done, which closes it; otherwise it stays open with the
- * reason shown inside. Returns the button that opens it, with the dialog beside it so both leave
- * the page together.
+ * Opens a modal form: `submit` returns true when done, which closes it; otherwise it stays open with
+ * the reason shown inside. The dialog leaves the page when closed.
  */
-export function formDialog(
+export function showForm(
   title: string,
   fields: HTMLElement[],
   submitText: string,
   submit: () => Promise<boolean>,
-): HTMLElement {
+): HTMLDialogElement {
   const dialog = el("dialog");
   const form = el("form");
   const problem = el("p");
@@ -175,18 +178,20 @@ export function formDialog(
     }
   };
   dialog.append(form);
-  const open = button(
-    title,
-    () => {
-      problem.textContent = "";
-      dialog.showModal();
-    },
-    "primary",
-  );
-  const wrap = el("span");
-  wrap.className = "contents";
-  wrap.append(open, dialog);
-  return wrap;
+  dialog.onclose = () => dialog.remove();
+  document.body.append(dialog);
+  dialog.showModal();
+  return dialog;
+}
+
+/** A button that opens a modal form; the same fields each time, so a failed attempt is kept. */
+export function formDialog(
+  title: string,
+  fields: HTMLElement[],
+  submitText: string,
+  submit: () => Promise<boolean>,
+): HTMLElement {
+  return button(title, () => showForm(title, fields, submitText, submit), "primary");
 }
 
 /** A date and time in the viewer's locale and time zone. */
