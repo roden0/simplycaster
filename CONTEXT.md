@@ -81,3 +81,23 @@ _Avoid_: Timestamp, checkpoint
 **Sincronizando** (en: **Syncing**):
 Estado de un Participante cuyas Pistas aún tienen audio pendiente de subir al Coordinador; visible para todos en la Sala, junto a "conectado" (en: *connected*).
 _Avoid_: Subiendo / Uploading
+
+### Publicación
+
+Mundo aparte del Estudio: lo que se publica son episodios ya terminados, editados fuera; nada enlaza un Episodio con una Sala o una Toma.
+
+**Gestor de feeds** (en: **Feed Manager**):
+Como el Coordinador, no es una entidad sino el conjunto de reglas y mecanismos del servidor que publican los Podcasts: generan sus feeds y páginas, y sirven su contenido a quien tenga acceso. Convive con el Coordinador en el mismo servidor, sin compartir responsabilidades con él.
+_Avoid_: Coordinador, CMS, hosting / Coordinator, CMS, hosting
+
+**Podcast** (en: **Podcast**):
+Programa publicado desde la instancia, con su portada, sus Episodios y su feed. Lo crea una Cuenta (su Creador); tiene una **etiqueta** (en: *slug*) fijada al crearlo, que no cambia aunque cambie su nombre. Puede ser público o privado.
+_Avoid_: Programa, canal, show / Show, channel
+
+**Episodio** (en: **Episode**):
+Audio terminado de un Podcast, subido con sus datos (título, notas, fecha de publicación…). Su etiqueta, única dentro del Podcast, se fija al crearlo.
+_Avoid_: Toma, Pista, grabación / Take, Track, recording
+
+**Clave de suscripción** (en: **Subscription key**):
+Acceso personal y revocable al feed y al contenido de un Podcast privado, creado con un nombre para reconocer a quién se dio (un suscriptor de pago, una aplicación).
+_Avoid_: Token, contraseña / Token, password
