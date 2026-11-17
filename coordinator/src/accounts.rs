@@ -2,6 +2,7 @@
 //! `accounts.json`, outside every Room folder so no download can include it. Rooms know nothing of this.
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -18,6 +19,11 @@ const FILE: &str = "accounts.json";
 const EMAIL_KEY_FILE: &str = "email.key";
 const INITIAL_NAME: &str = "admin";
 const ENROLMENT_MS: f64 = 72.0 * 3600.0 * 1000.0;
+const SIGN_IN_LINK_MS: f64 = 15.0 * 60.0 * 1000.0;
+/// Sign-in links one address may ask for per `SIGN_IN_LINK_MS`, and all addresses together: each
+/// one is an email sent, and a request names any address.
+const LINKS_PER_ADDRESS: u32 = 5;
+const LINKS_IN_ALL: u32 = 50;
 /// An unfinished passkey ceremony: as long as the browser's own timeout.
 const CEREMONY_MS: f64 = 5.0 * 60.0 * 1000.0;
 /// Ceremonies start without signing in, so their memory is bounded.
@@ -83,6 +89,26 @@ pub struct Accounts {
     dir: PathBuf,
     store: Mutex<Store>,
     email_key: Vec<u8>,
+    sign_ins: Mutex<SignIns>,
+}
+
+/// Sign-in links and the requests for them, in memory: a restart only makes people ask again.
+#[derive(Default)]
+struct SignIns {
+    /// (hash of the secret, Account id, expiry)
+    links: Vec<(String, String, f64)>,
+    /// Requests per address and in all, each as (window start, count).
+    by_address: HashMap<IpAddr, (f64, u32)>,
+    all: (f64, u32),
+}
+
+/// Counts one request in a window of `SIGN_IN_LINK_MS`; false once there were `max` already.
+fn count(window: &mut (f64, u32), max: u32, now: f64) -> bool {
+    if now - window.0 >= SIGN_IN_LINK_MS {
+        *window = (now, 0);
+    }
+    window.1 += 1;
+    window.1 <= max
 }
 
 fn hash(token: &str) -> String {
@@ -142,6 +168,7 @@ impl Accounts {
             dir: dir.into(),
             store: Mutex::new(store),
             email_key,
+            sign_ins: Mutex::default(),
         };
         {
             let mut store = accounts.store.lock().unwrap();
@@ -171,6 +198,54 @@ impl Accounts {
             }
         }
         Ok(accounts)
+    }
+
+    /// Whether `from` may ask for another Sign-in link now; counts the request.
+    pub fn may_ask_for_sign_in_link(&self, from: IpAddr) -> bool {
+        let now = now_ms();
+        let mut sign_ins = self.sign_ins.lock().unwrap();
+        if sign_ins.by_address.len() > 10_000 {
+            sign_ins
+                .by_address
+                .retain(|_, (start, _)| now - *start < SIGN_IN_LINK_MS);
+        }
+        let mine = count(
+            sign_ins.by_address.entry(from).or_insert((now, 0)),
+            LINKS_PER_ADDRESS,
+            now,
+        );
+        mine && count(&mut sign_ins.all, LINKS_IN_ALL, now)
+    }
+
+    /// A Sign-in link for the Account with `email`, if there is one: its secret, kept only hashed.
+    pub fn sign_in_link(&self, email: &str) -> Option<(Account, String)> {
+        let print = self.print(email);
+        let account = self
+            .store
+            .lock()
+            .unwrap()
+            .accounts
+            .iter()
+            .find(|a| a.email_print.as_deref() == Some(print.as_str()))
+            .cloned()?;
+        let token = random_token();
+        let now = now_ms();
+        let mut sign_ins = self.sign_ins.lock().unwrap();
+        sign_ins.links.retain(|(_, _, expires)| *expires > now);
+        sign_ins
+            .links
+            .push((hash(&token), account.id.clone(), now + SIGN_IN_LINK_MS));
+        Some((account, token))
+    }
+
+    /// The Account a live Sign-in link opens. Single use: the link is spent here.
+    pub fn use_sign_in_link(&self, token: &str) -> Option<Account> {
+        let (hashed, now) = (hash(token), now_ms());
+        let mut sign_ins = self.sign_ins.lock().unwrap();
+        let i = sign_ins.links.iter().position(|(h, _, _)| *h == hashed)?;
+        let (_, id, expires) = sign_ins.links.remove(i);
+        drop(sign_ins);
+        (expires > now).then(|| self.get(&id)).flatten()
     }
 
     /// Whether `email` is the one `account` was created with, however it is spelt.
@@ -464,6 +539,41 @@ mod tests {
         let rod = accounts.enrolling(&token).unwrap();
         assert!(accounts.has_email(&rod, " R.od+x@googlemail.com"));
         assert!(!accounts.has_email(&rod, "rod@example.com"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_sign_in_link_works_once_for_its_account_only() {
+        let dir = folder();
+        let accounts = Accounts::load_or_create(&dir).unwrap();
+        accounts.create("Rod", "rod@gmail.com", AccountRole::Host).unwrap();
+        assert!(accounts.sign_in_link("nobody@example.com").is_none());
+        let (rod, token) = accounts.sign_in_link("R.od@gmail.com").unwrap();
+        assert!(accounts.use_sign_in_link("nope").is_none());
+        assert_eq!(accounts.use_sign_in_link(&token).unwrap().id, rod.id);
+        assert!(accounts.use_sign_in_link(&token).is_none());
+        let (_, late) = accounts.sign_in_link("rod@gmail.com").unwrap();
+        accounts.sign_ins.lock().unwrap().links[0].2 = now_ms() - 1.0;
+        assert!(accounts.use_sign_in_link(&late).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn sign_in_links_are_limited_per_address_and_in_all() {
+        let dir = folder();
+        let accounts = Accounts::load_or_create(&dir).unwrap();
+        let one: IpAddr = "203.0.113.1".parse().unwrap();
+        for _ in 0..LINKS_PER_ADDRESS {
+            assert!(accounts.may_ask_for_sign_in_link(one));
+        }
+        assert!(!accounts.may_ask_for_sign_in_link(one));
+        let mut others = 0;
+        for i in 0..LINKS_IN_ALL {
+            let ip: IpAddr = format!("198.51.100.{i}").parse().unwrap();
+            others += u32::from(accounts.may_ask_for_sign_in_link(ip));
+        }
+        // The refused request did not count in all.
+        assert_eq!(others, LINKS_IN_ALL - LINKS_PER_ADDRESS);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

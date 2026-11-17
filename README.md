@@ -47,6 +47,8 @@ By default nobody gets an email: you copy each Invitation or enrolment link and 
 
 Then every Invitation and enrolment link gets a **Send by email** button next to **Copy**. The email is plain text with the link; the address you type is used to send it and not stored. For an enrolment link the address must be the Account's own, typed again since only its fingerprint is kept: a different one is refused, so a link cannot reach someone else by a typo. If the provider refuses the email, the page says so and the link is still there to copy. Recording never depends on email.
 
+With email set up, the sign-in page also offers **Email me a sign-in link**: anyone with an Account types its email and gets a link that signs them in once, within 15 minutes, as an alternative to the passkey (handy on a new device, or after losing one; once in, add a passkey from the Dashboard). The page answers the same whether an Account has that email or not, and the requests are rate limited per address and in all. A mailbox thus gives access to its Account, so give each Account an address only its owner reads.
+
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
 **Already running a reverse proxy** (Traefik, nginx, Coolify)? Remove the `caddy` service, publish `127.0.0.1:3000:3000` on `simplycaster`, and point your proxy at it. It must pass WebSockets through.

@@ -261,6 +261,11 @@ async fn main() {
                 .post(accounts_api::sign_in)
                 .delete(accounts_api::sign_out),
         )
+        .route("/api/backoffice/sign-in-link", post(accounts_api::ask_for_sign_in_link))
+        .route(
+            "/api/backoffice/sign-in-link/session",
+            post(accounts_api::use_sign_in_link),
+        )
         .route("/api/backoffice/me", get(accounts_api::me))
         .route("/api/backoffice/disk", get(backoffice::disk))
         .route("/api/backoffice/me/passkeys", post(accounts_api::passkey_start))

@@ -351,6 +351,22 @@ pub struct SignInOptions {
     /// The initial Admin still exists, so `BACKOFFICE_TOKEN` works.
     pub token: bool,
     pub passkeys: bool,
+    /// `SMTP_URL` is set, so a Sign-in link can be asked for (ADR-0012).
+    pub mail: bool,
+}
+
+/// Asks for a Sign-in link: the answer is the same whether an Account has that email or not.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct RequestSignInLink {
+    pub email: String,
+}
+
+/// The secret of a Sign-in link, from the fragment of `/backoffice#sign-in={token}`.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct UseSignInLink {
+    pub token: String,
 }
 
 #[derive(Debug, Deserialize, TS)]

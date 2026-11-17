@@ -12,7 +12,8 @@ const en = {
   micProblemEntry: "⚠ {problem}",
   buildInfo: "build {build} UTC",
   noInvitation: "Open the personal link from your invitation to join the Room.",
-  invalidInvitation: "This invitation is not valid, or its Room has been closed.",
+  invalidInvitation:
+    "This invitation is not valid, or its Room has been closed.",
   roomClosed: "The Host closed the Room. Thank you for recording!",
   joinedAs: "You are {name} ({role})",
   connecting: "Connecting…",
@@ -20,9 +21,11 @@ const en = {
   enableMicrophone: "Enable microphone",
   microphone: "Microphone",
   inputLevel: "Input level",
-  micEnded: "Your microphone stopped. Choose it again, or reload the page and enable it.",
+  micEnded:
+    "Your microphone stopped. Choose it again, or reload the page and enable it.",
   micMuted: "The system muted your microphone: nothing is being recorded.",
-  micHidden: "Keep this page in the foreground while recording: the system may cut the microphone.",
+  micHidden:
+    "Keep this page in the foreground while recording: the system may cut the microphone.",
   micSilent: "Your microphone is sending no sound at all.",
   micEndedLabel: "microphone stopped",
   micMutedLabel: "microphone muted",
@@ -34,9 +37,12 @@ const en = {
   calibrating: "Calibrating… keep quiet for a few seconds.",
   latencyCalibrated: "Latency: {ms} ms (calibrated).",
   latencyEstimated: "Latency: {ms} ms (browser estimate, not calibrated).",
-  calibrationFailed: "The clicks were not heard: using the browser estimate, {ms} ms. Turn the volume up and try again.",
-  openedElsewhere: "This invitation was opened in another window or device. Reload this page to use it here.",
-  useHeadphones: "Use headphones: you hear the other Participants live, and without headphones their voices leak into your Track and they hear their own echo.",
+  calibrationFailed:
+    "The clicks were not heard: using the browser estimate, {ms} ms. Turn the volume up and try again.",
+  openedElsewhere:
+    "This invitation was opened in another window or device. Reload this page to use it here.",
+  useHeadphones:
+    "Use headphones: you hear the other Participants live, and without headphones their voices leak into your Track and they hear their own echo.",
   liveConnecting: "live: connecting…",
   liveConnected: "live: you hear each other",
   liveInterrupted: "live: interrupted",
@@ -49,13 +55,15 @@ const en = {
   statusSyncing: "syncing",
   clockOffset: "clock offset {offset} ms (round trip {rtt} ms)",
   clockPending: "measuring clock…",
-  micError: "Could not open the microphone. Allow it for this site and reload the page. ({error})",
+  micError:
+    "Could not open the microphone. Allow it for this site and reload the page. ({error})",
   record: "Record",
   stop: "Stop",
   takeStarting: "Take {take} starts in a moment…",
   takeRecording: "Recording take {take}",
   takeStopped: "Take {take} stopped",
-  notReadyToRecord: "Take {take} is being recorded: enable your microphone to join it.",
+  notReadyToRecord:
+    "Take {take} is being recorded: enable your microphone to join it.",
   takeRejoined: "Recording take {take} (continuing after reconnecting)",
   recordingError: "Recording failed. Reload the page to join again. ({error})",
   trackSyncing: "Sending the rest of your Track for take {take}…",
@@ -76,29 +84,35 @@ const en = {
   podcastMeta: "{episodes} episodes · {live} in the feed",
   podcastLabel: "Label: {slug}",
   deletePodcast: "Delete",
-  deletePodcastConfirm: "Delete Podcast {name}, its feed and every Episode for good? Subscribers will find nothing at its address. Copies may stay in the backups until they expire.",
+  deletePodcastConfirm:
+    "Delete Podcast {name}, its feed and every Episode for good? Subscribers will find nothing at its address. Copies may stay in the backups until they expire.",
   allPodcasts: "← All Podcasts",
   feed: "Feed",
   feeds: "Feeds",
   publicPage: "Public page",
   podcastPrivate: "Private",
-  podcastPrivateHint: "Only people with a Subscription key can read the feed, the pages and the audio: for paid subscriptions or a paid app. Directories will not list it.",
-  privateFeedHint: "This Podcast is private: each subscriber gets their own feed address, with their Subscription key in it.",
+  podcastPrivateHint:
+    "Only people with a Subscription key can read the feed, the pages and the audio: for paid subscriptions or a paid app. Directories will not list it.",
+  privateFeedHint:
+    "This Podcast is private: each subscriber gets their own feed address, with their Subscription key in it.",
   subscriptionKeys: "Subscription keys",
   noKeys: "No Subscription keys yet: nobody can read this Podcast.",
   newKey: "New key",
   keyName: "Given to",
   createKey: "Create key",
-  keyCreatedOnce: "Send this feed address to {name}. It is shown only now; if it is lost, revoke the key and create another.",
+  keyCreatedOnce:
+    "Send this feed address to {name}. It is shown only now; if it is lost, revoke the key and create another.",
   keyCreated: "created {when}",
   keyNeverUsed: "not used since the server started",
   keyUsed: "last used {when} · {addresses} addresses in 24 h",
   revokeKey: "Revoke",
-  revokeKeyConfirm: "Revoke the key of {name}? Their feed stops working at once.",
+  revokeKeyConfirm:
+    "Revoke the key of {name}? Their feed stops working at once.",
   jsonFeed: "JSON feed",
   regenerateFeed: "Regenerate feed",
   neverGenerated: "Not generated yet.",
-  generatedAt: "Generated {when}. It is regenerated on every change; regenerate by hand when a scheduled Episode's time comes.",
+  generatedAt:
+    "Generated {when}. It is regenerated on every change; regenerate by hand when a scheduled Episode's time comes.",
   podcastMissing: "Apple Podcasts needs: {fields}.",
   podcastDetails: "Podcast details",
   podcastTitle: "Title",
@@ -107,7 +121,8 @@ const en = {
   podcastCategory: "Category",
   podcastAuthor: "Author",
   podcastOwnerEmail: "Owner email",
-  podcastOwnerHint: "Public in the feed: Apple writes to it to verify the Podcast is yours.",
+  podcastOwnerHint:
+    "Public in the feed: Apple writes to it to verify the Podcast is yours.",
   podcastType: "Type",
   episodic: "Episodic (newest first)",
   serial: "Serial (in order)",
@@ -116,7 +131,8 @@ const en = {
   replaceCover: "Replace the cover",
   artworkHint: "Square JPEG or PNG, from 1400 to 3000 pixels a side.",
   imageUnreadable: "That image cannot be read.",
-  imageSize: "The image is {width}×{height}: it must be square, from 1400 to 3000 pixels a side.",
+  imageSize:
+    "The image is {width}×{height}: it must be square, from 1400 to 3000 pixels a side.",
   explicit: "Explicit content",
   explicitInherit: "Like the Podcast ({value})",
   yes: "Yes",
@@ -129,7 +145,8 @@ const en = {
   editEpisode: "Edit Episode",
   createEpisode: "Create Episode",
   deleteEpisode: "Delete",
-  deleteEpisodeConfirm: "Delete Episode {name} and its audio for good? It leaves the feed now.",
+  deleteEpisodeConfirm:
+    "Delete Episode {name} and its audio for good? It leaves the feed now.",
   episodeLive: "in the feed",
   episodeDraft: "draft",
   episodeNoAudio: "no audio",
@@ -137,9 +154,11 @@ const en = {
   episodePending: "waiting to regenerate",
   episodeTitle: "Title",
   episodeNotes: "Show notes",
-  episodeNotesHint: "Basic HTML: paragraphs <p>, links <a href=\"…\">, lists <ul>.",
+  episodeNotesHint:
+    'Basic HTML: paragraphs <p>, links <a href="…">, lists <ul>.',
   episodeDate: "Publication date",
-  episodeDateHint: "Empty: a draft, not in the feed. In the future: scheduled, in the feed once regenerated after that time.",
+  episodeDateHint:
+    "Empty: a draft, not in the feed. In the future: scheduled, in the feed once regenerated after that time.",
   episodeType: "Type",
   episodeFull: "Full episode",
   episodeTrailer: "Trailer",
@@ -158,23 +177,38 @@ const en = {
   disk: "Disk",
   diskFree: "{free} free of {total}",
   diskUsed: "Disk used",
-  diskLow: "Little space left: a long Take may not fit. Download and delete closed Rooms to free some.",
+  diskLow:
+    "Little space left: a long Take may not fit. Download and delete closed Rooms to free some.",
   roomMeta: "{takes} · {created}",
   accountPasskeys: "{passkeys} passkeys",
   backofficeToken: "Installation token",
   signIn: "Sign in",
   signInPasskey: "Sign in with a passkey",
+  signInLinkEmail: "Your email",
+  askSignInLink: "Email me a sign-in link",
+  signInLinkAsked:
+    "If an Account uses that email, a sign-in link is on its way. It works once, for 15 minutes.",
+  signInLinkTooMany:
+    "Too many sign-in links asked for. Try again in a few minutes.",
+  signInLinkTitle: "Sign in",
+  signInLinkHint:
+    "This link signs you in once. Add a passkey from the Dashboard to sign in faster next time.",
+  signInLinkUsed:
+    "That sign-in link has expired or was already used. Ask for a new one.",
   passkeysOff: "Passkeys are not available on this server: set PUBLIC_URL.",
-  passkeyCancelled: "The passkey request was cancelled or timed out. Try again.",
+  passkeyCancelled:
+    "The passkey request was cancelled or timed out. Try again.",
   passkeyRefused: "That passkey was not accepted.",
   enrolTitle: "Set up your access",
-  enrolHint: "Create a passkey to sign in from now on: your device keeps it, and you unlock it with your fingerprint, face or PIN.",
+  enrolHint:
+    "Create a passkey to sign in from now on: your device keeps it, and you unlock it with your fingerprint, face or PIN.",
   enrolButton: "Create passkey",
   account: "Your account",
   addPasskey: "Add a passkey on this device",
   passkeyAdded: "Passkey added.",
   initialAdminName: "Initial Admin",
-  initialAdminHint: "You signed in with the installation token. Create an Admin with a passkey; once it is registered, delete this Initial Admin to retire the token.",
+  initialAdminHint:
+    "You signed in with the installation token. Create an Admin with a passkey; once it is registered, delete this Initial Admin to retire the token.",
   accounts: "Accounts",
   newAccount: "New Account",
   accountName: "Name",
@@ -187,7 +221,8 @@ const en = {
   enrolmentLinkLabel: "Enrolment link for {name}",
   newEnrolmentLink: "New link",
   deleteAccount: "Delete",
-  deleteAccountConfirm: "Delete the Account of {name}? Its Rooms stay, and only an Admin will see them.",
+  deleteAccountConfirm:
+    "Delete the Account of {name}? Its Rooms stay, and only an Admin will see them.",
   signOut: "Sign out",
   wrongBackofficeToken: "That token is not right.",
   newRoom: "New Room",
@@ -195,7 +230,8 @@ const en = {
   roomLabel: "Label: {slug}",
   hostName: "Host name",
   createRoom: "Create Room",
-  nameHint: "Name it however helps you organize, for example “My show S01E01 - topic”. The file names use a short label made from it. The Host name takes letters, digits and dashes.",
+  nameHint:
+    "Name it however helps you organize, for example “My show S01E01 - topic”. The file names use a short label made from it. The Host name takes letters, digits and dashes.",
   rooms: "Rooms",
   noRooms: "No Rooms yet.",
   refresh: "Refresh",
@@ -216,42 +252,56 @@ const en = {
   guestName: "Guest name",
   invite: "Invite",
   closeRoom: "Close Room",
-  closeConfirm: "Close Room {name}? Its Invitations expire and it cannot be reopened.",
-  closePending: "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close Room {name} anyway?",
-  closeHere: "Close the Room? Every Invitation expires and it cannot be reopened.",
-  closeHerePending: "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close the Room anyway?",
+  closeConfirm:
+    "Close Room {name}? Its Invitations expire and it cannot be reopened.",
+  closePending:
+    "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close Room {name} anyway?",
+  closeHere:
+    "Close the Room? Every Invitation expires and it cannot be reopened.",
+  closeHerePending:
+    "{names} still have audio not uploaded: closing now leaves those Tracks incomplete. Close the Room anyway?",
   deleteRoom: "Delete Room",
-  deleteRoomConfirm: "Delete Room {name} and all its recordings for good? This cannot be undone here, and copies may stay in the backups until they expire.",
+  deleteRoomConfirm:
+    "Delete Room {name} and all its recordings for good? This cannot be undone here, and copies may stay in the backups until they expire.",
   takesHeading: "Takes",
   takeEntry: "Take {take}",
   deleteTake: "Delete",
-  deleteTakeConfirm: "Delete Take {take} of Room {name} and its recordings for good? The other Takes keep their numbers. Copies may stay in the backups until they expire.",
+  deleteTakeConfirm:
+    "Delete Take {take} of Room {name} and its recordings for good? The other Takes keep their numbers. Copies may stay in the backups until they expire.",
   downloadRoom: "Download (Ogg)",
   convertFlac: "Convert to FLAC",
   convertingFlac: "Converting to FLAC…",
   downloadFlac: "Download (FLAC)",
   flacFailed: "The FLAC conversion failed.",
-  flacHint: "FLAC opens in any editor: one file per Participant and Take, all as long as the Take, with each clock's drift corrected and silence where audio was lost. Place them all at zero.",
+  flacHint:
+    "FLAC opens in any editor: one file per Participant and Take, all as long as the Take, with each clock's drift corrected and silence where audio was lost. Place them all at zero.",
   requestFailed: "Request failed ({status}).",
-  errorInvalidName: "That name is not valid. A Room name needs some letters or digits; other names, only letters, digits and dashes (up to 40).",
+  errorInvalidName:
+    "That name is not valid. A Room name needs some letters or digits; other names, only letters, digits and dashes (up to 40).",
   errorNameTaken: "That name is already in this Room.",
   errorRoomFull: "A Room holds at most {max} Participants.",
   errorRecording: "A Take is being recorded: stop it before closing the Room.",
   errorClosed: "This Room is closed.",
   errorOpen: "Close the Room first.",
-  errorConverting: "This Room is being converted to FLAC: wait until it finishes.",
+  errorConverting:
+    "This Room is being converted to FLAC: wait until it finishes.",
   errorInvalidEmail: "That email address is not valid.",
   errorEmailTaken: "There is already an Account with that email.",
-  errorLastAdmin: "Another Admin who can sign in must remain. Register a passkey for one first.",
-  errorInvalidEnrolment: "This link is not valid: it was used already or has expired. Ask an Admin for a new one.",
+  errorLastAdmin:
+    "Another Admin who can sign in must remain. Register a passkey for one first.",
+  errorInvalidEnrolment:
+    "This link is not valid: it was used already or has expired. Ask an Admin for a new one.",
   errorPasskeysUnavailable: "Passkeys are not available right now.",
   errorNotSaved: "The change could not be saved.",
-  errorMailUnavailable: "Email is not set up on this instance: copy the link instead.",
-  errorMailFailed: "The email could not be sent. Copy the link and send it yourself.",
+  errorMailUnavailable:
+    "Email is not set up on this instance: copy the link instead.",
+  errorMailFailed:
+    "The email could not be sent. Copy the link and send it yourself.",
   errorWrongEmail: "That is not the email of this Account.",
   errorNotFound: "It no longer exists: someone may have deleted it.",
   errorPublishingUnavailable: "Publishing needs PUBLIC_URL on this server.",
-  errorInvalidFile: "That file is not accepted: check its type and size (mp3 up to 500 MB, images up to 10 MB, transcripts up to 5 MB).",
+  errorInvalidFile:
+    "That file is not accepted: check its type and size (mp3 up to 500 MB, images up to 10 MB, transcripts up to 5 MB).",
   errorInvalidDetails: "Some field is empty or too long: a title is required.",
 };
 
@@ -261,24 +311,37 @@ export type Catalog = Record<MessageKey, string>;
 const catalogs: Record<string, Catalog> = { en };
 
 /** The first of the browser's languages with a catalog, by full tag or by language; `en` otherwise. */
-export function pickLocale(languages: readonly string[], available: readonly string[]): string {
+export function pickLocale(
+  languages: readonly string[],
+  available: readonly string[],
+): string {
   for (const tag of languages) {
     const lower = tag.toLowerCase();
-    const match = available.find((a) => a === lower) ?? available.find((a) => a === lower.split("-")[0]);
+    const match =
+      available.find((a) => a === lower) ??
+      available.find((a) => a === lower.split("-")[0]);
     if (match) return match;
   }
   return "en";
 }
 
-const locale = pickLocale(globalThis.navigator?.languages ?? [], Object.keys(catalogs));
+const locale = pickLocale(
+  globalThis.navigator?.languages ?? [],
+  Object.keys(catalogs),
+);
 
 /** Sets the page language, for screen readers and hyphenation. */
 export function applyLocale() {
   document.documentElement.lang = locale;
 }
 
-export function t(key: MessageKey, params: Record<string, string | number> = {}): string {
-  return catalogs[locale][key].replace(/\{(\w+)\}/g, (_, p) => String(params[p] ?? `{${p}}`));
+export function t(
+  key: MessageKey,
+  params: Record<string, string | number> = {},
+): string {
+  return catalogs[locale][key].replace(/\{(\w+)\}/g, (_, p) =>
+    String(params[p] ?? `{${p}}`),
+  );
 }
 
 /** Joins the parts of a composed line with the locale's separator. */
@@ -286,7 +349,10 @@ export function list(parts: string[]): string {
   return parts.join(t("listSeparator"));
 }
 
-export const ROLE_LABEL: Record<Role, MessageKey> = { host: "roleHost", guest: "roleGuest" };
+export const ROLE_LABEL: Record<Role, MessageKey> = {
+  host: "roleHost",
+  guest: "roleGuest",
+};
 export const ACCOUNT_ROLE_LABEL: Record<AccountRole, MessageKey> = {
   host: "roleAccountHost",
   admin: "roleAccountAdmin",

@@ -12,6 +12,10 @@ pub mod en {
     pub const INVITATION_BODY: &str = "Hi {name},\n\nYou are invited to record {room} on SimplyCaster. \
 Open this link in Chrome, Firefox or Safari, ideally with headphones:\n\n{link}\n\n\
 The link is yours alone: do not share it.\n";
+    pub const SIGN_IN_SUBJECT: &str = "Your SimplyCaster sign-in link";
+    pub const SIGN_IN_BODY: &str = "Hi {name},\n\nOpen this link to sign in to SimplyCaster. \
+It works once, for the next 15 minutes:\n\n{link}\n\n\
+If you did not ask for it, ignore this email: nobody can sign in without the link.\n";
     pub const ENROLMENT_SUBJECT: &str = "Set up your SimplyCaster account";
     pub const ENROLMENT_BODY: &str = "Hi {name},\n\nOpen this link to set up your SimplyCaster account \
 with a passkey. It works once, for the next 72 hours:\n\n{link}\n\n\
