@@ -6,10 +6,23 @@ import type { FinishLogin } from "./protocol/FinishLogin.ts";
 import type { Me } from "./protocol/Me.ts";
 import type { PasskeyChallenge } from "./protocol/PasskeyChallenge.ts";
 import type { SignIn } from "./protocol/SignIn.ts";
+import type { RequestSignInLink } from "./protocol/RequestSignInLink.ts";
 import type { SignInOptions } from "./protocol/SignInOptions.ts";
+import type { UseSignInLink } from "./protocol/UseSignInLink.ts";
 import type { StartEnrolment } from "./protocol/StartEnrolment.ts";
 import { getPasskey } from "./passkeys.ts";
-import { base, button, error, features, jsonRequest, load, passkeyProblem, reasonOf, registerPasskey, session } from "./backoffice-common.ts";
+import {
+  base,
+  button,
+  error,
+  features,
+  jsonRequest,
+  load,
+  passkeyProblem,
+  reasonOf,
+  registerPasskey,
+  session,
+} from "./backoffice-common.ts";
 import { dashboardPage } from "./backoffice-dashboard.ts";
 import { roomsPage } from "./backoffice-rooms.ts";
 import { accountsPage } from "./backoffice-accounts.ts";
@@ -36,16 +49,26 @@ type Page = {
   show: (me: Me, item: string) => HTMLElement[];
 };
 const pages: Page[] = [
-  { path: "/backoffice", label: "dashboard", show: (me) => dashboardPage(me, navigate) },
+  {
+    path: "/backoffice",
+    label: "dashboard",
+    show: (me) => dashboardPage(me, navigate),
+  },
   { path: "/backoffice/rooms", label: "rooms", show: roomsPage },
   {
     path: "/backoffice/podcasts",
     label: "podcasts",
     publishing: true,
     nested: true,
-    show: (_, item) => (item ? podcastPage(item, navigate) : podcastsPage(navigate)),
+    show: (_, item) =>
+      item ? podcastPage(item, navigate) : podcastsPage(navigate),
   },
-  { path: "/backoffice/accounts", label: "accounts", admin: true, show: accountsPage },
+  {
+    path: "/backoffice/accounts",
+    label: "accounts",
+    admin: true,
+    show: accountsPage,
+  },
 ];
 
 let me: Me | undefined;
@@ -62,12 +85,19 @@ function render() {
   if (!me) return;
   const signedIn = me;
   const allowed = pages.filter(
-    (p) => (!p.admin || signedIn.role === "admin") && (!p.publishing || signedIn.publishing),
+    (p) =>
+      (!p.admin || signedIn.role === "admin") &&
+      (!p.publishing || signedIn.publishing),
   );
   const path = location.pathname;
-  const inside = (p: Page) => p.nested && path.startsWith(`${p.path}/`) && path.length > p.path.length + 1;
+  const inside = (p: Page) =>
+    p.nested &&
+    path.startsWith(`${p.path}/`) &&
+    path.length > p.path.length + 1;
   const page = allowed.find((p) => p.path === path || inside(p)) ?? allowed[0];
-  const item = inside(page) ? decodeURIComponent(path.slice(page.path.length + 1)) : "";
+  const item = inside(page)
+    ? decodeURIComponent(path.slice(page.path.length + 1))
+    : "";
   if (page.path !== path && !item) history.replaceState(null, "", page.path);
   error.textContent = "";
   renderHeader(allowed, page);
@@ -91,7 +121,10 @@ function renderHeader(allowed: Page[], current: Page) {
     };
     nav.append(link);
   }
-  const who = el("span", me?.initial ? t("initialAdminName") : (me?.name ?? ""));
+  const who = el(
+    "span",
+    me?.initial ? t("initialAdminName") : (me?.name ?? ""),
+  );
   who.className = "who";
   const signOut = button(t("signOut"), async () => {
     await fetch(`${base}/session`, { method: "DELETE" }).catch(() => undefined);
@@ -112,15 +145,18 @@ async function start() {
 session.expired = showSignIn;
 
 /** Shows how to sign in: a passkey, and the installation token while the Initial Admin exists. */
-async function showSignIn() {
+async function showSignIn(problem = "") {
   me = undefined;
-  header.replaceChildren(Object.assign(el("span", t("appTitle")), { className: "brand" }));
+  header.replaceChildren(
+    Object.assign(el("span", t("appTitle")), { className: "brand" }),
+  );
   const options: SignInOptions | undefined = await fetch(`${base}/session`)
     .then((r) => r.json())
     .catch(() => undefined);
   const wrong = el("p");
   wrong.setAttribute("role", "alert");
   wrong.className = "alert";
+  wrong.textContent = problem;
   const parts: HTMLElement[] = [];
 
   if (options?.passkeys) {
@@ -137,6 +173,8 @@ async function showSignIn() {
     parts.push(el("p", t("passkeysOff")));
   }
 
+  if (options?.mail) parts.push(signInLinkForm(wrong));
+
   if (options?.token) {
     const form = el("form");
     form.className = "inline-form";
@@ -150,19 +188,90 @@ async function showSignIn() {
     form.append(label, el("button", t("signIn")));
     form.onsubmit = async (e) => {
       e.preventDefault();
-      const res = await jsonRequest(`${base}/session`, "POST", { token: token.value } satisfies SignIn).catch(
-        () => undefined,
-      );
+      const res = await jsonRequest(`${base}/session`, "POST", {
+        token: token.value,
+      } satisfies SignIn).catch(() => undefined);
       if (res?.ok) start();
       else
         wrong.textContent =
-          res?.status === 401 ? t("wrongBackofficeToken") : t("requestFailed", { status: res?.status ?? 0 });
+          res?.status === 401
+            ? t("wrongBackofficeToken")
+            : t("requestFailed", { status: res?.status ?? 0 });
     };
     parts.push(form);
   }
   const box = el("section");
   box.className = "card narrow";
   box.append(el("h1", t("signIn")), ...parts, wrong);
+  main.replaceChildren(box);
+}
+
+/** Asks for a Sign-in link by email (ADR-0012); the answer never says whether the Account exists. */
+function signInLinkForm(wrong: HTMLElement): HTMLElement {
+  const form = el("form");
+  form.className = "inline-form";
+  const email = el("input");
+  email.type = "email";
+  email.required = true;
+  email.maxLength = 254;
+  email.autocomplete = "email";
+  const label = el("label", t("signInLinkEmail"));
+  label.className = "field";
+  label.append(email);
+  const ask = el("button", t("askSignInLink"));
+  const done = el("p");
+  done.setAttribute("role", "status");
+  form.append(label, ask, done);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    ask.disabled = true;
+    const body = { email: email.value.trim() } satisfies RequestSignInLink;
+    const res = await jsonRequest(`${base}/sign-in-link`, "POST", body).catch(
+      () => undefined,
+    );
+    ask.disabled = false;
+    wrong.textContent = done.textContent = "";
+    if (res?.ok) done.textContent = t("signInLinkAsked");
+    else if (res?.status === 429) wrong.textContent = t("signInLinkTooMany");
+    else
+      wrong.textContent = res
+        ? await reasonOf(res)
+        : t("requestFailed", { status: 0 });
+  };
+  return form;
+}
+
+/**
+ * The page a Sign-in link opens. It waits for a click: mail scanners that open links would otherwise
+ * spend it before the person does.
+ */
+function showSignInLink(token: string) {
+  header.replaceChildren(
+    Object.assign(el("span", t("appTitle")), { className: "brand" }),
+  );
+  history.replaceState(null, "", location.pathname);
+  const go = button(
+    t("signIn"),
+    async () => {
+      const body = { token } satisfies UseSignInLink;
+      const res = await jsonRequest(
+        `${base}/sign-in-link/session`,
+        "POST",
+        body,
+      ).catch(() => undefined);
+      if (res?.ok) start();
+      else
+        showSignIn(
+          res?.status === 401
+            ? t("signInLinkUsed")
+            : t("requestFailed", { status: res?.status ?? 0 }),
+        );
+    },
+    "primary",
+  );
+  const box = el("section");
+  box.className = "card narrow";
+  box.append(el("h1", t("signInLinkTitle")), el("p", t("signInLinkHint")), go);
   main.replaceChildren(box);
 }
 
@@ -173,7 +282,10 @@ async function signInWithPasskey(): Promise<string> {
   const { ceremony, options }: PasskeyChallenge = await begin.json();
   try {
     const credential = await getPasskey(options);
-    const res = await jsonRequest(`${base}/login/finish`, "POST", { ceremony, credential } satisfies FinishLogin);
+    const res = await jsonRequest(`${base}/login/finish`, "POST", {
+      ceremony,
+      credential,
+    } satisfies FinishLogin);
     return res.ok ? "" : t("passkeyRefused");
   } catch (e) {
     return passkeyProblem(e);
@@ -182,14 +294,18 @@ async function signInWithPasskey(): Promise<string> {
 
 /** The page an enrolment link opens: its secret came in the fragment, which is never sent to a server. */
 function showEnrolment(token: string) {
-  header.replaceChildren(Object.assign(el("span", t("appTitle")), { className: "brand" }));
+  header.replaceChildren(
+    Object.assign(el("span", t("appTitle")), { className: "brand" }),
+  );
   const wrong = el("p");
   wrong.setAttribute("role", "alert");
   wrong.className = "alert";
   const create = button(
     t("enrolButton"),
     async () => {
-      const begin = await jsonRequest(`${base}/enrolment`, "POST", { token } satisfies StartEnrolment);
+      const begin = await jsonRequest(`${base}/enrolment`, "POST", {
+        token,
+      } satisfies StartEnrolment);
       const problem = await registerPasskey(begin);
       if (problem) {
         wrong.textContent = problem;
@@ -206,6 +322,9 @@ function showEnrolment(token: string) {
   main.replaceChildren(box);
 }
 
-const enrol = new URLSearchParams(location.hash.slice(1)).get("enrol");
+const fragment = new URLSearchParams(location.hash.slice(1));
+const enrol = fragment.get("enrol");
+const signInLink = fragment.get("sign-in");
 if (enrol) showEnrolment(enrol);
+else if (signInLink) showSignInLink(signInLink);
 else start();

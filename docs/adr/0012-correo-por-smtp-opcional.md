@@ -7,7 +7,7 @@ Hasta ahora no se envía ningún correo: quien crea una Invitación o un Enlace 
 - **Emails de Cuenta:** no se guardan. Solo se guarda una **huella** (HMAC con una clave propia, `DATA_DIR/email.key`, `0600`, generada al primer arranque) y una **pista** para reconocerla (`r•••@gmail.com`). Para pedir un Enlace de acceso, la persona escribe su email: el Coordinador calcula la huella, encuentra la Cuenta y envía a la dirección que acaba de recibir. La unicidad se comprueba sobre la huella. Al arrancar, las Cuentas con el email en claro pasan a huella y pista.
 - **Normalización antes de la huella:** quitar espacios y pasar a minúsculas. Para `gmail.com` y `googlemail.com`, además, quitar los puntos de la parte local y lo que va desde el `+`, y tratar `googlemail.com` como `gmail.com`. Con otros proveedores no, porque un punto o un `+` pueden distinguir buzones distintos y el enlace llegaría a otra persona.
 - **Emails de Invitados:** se usan para enviar la Invitación y no se guardan. Reenviarla es volver a escribirlo.
-- **Fallo de envío:** se muestra el error y el enlace para copiarlo a mano. En el Enlace de acceso, como no hay nada que copiar, solo un error genérico.
+- **Fallo de envío:** se muestra el error y el enlace para copiarlo a mano. En el Enlace de acceso no hay nada que copiar, y la respuesta llega antes del envío para que ni ella ni su tiempo digan si la Cuenta existe: un fallo solo queda en el registro del Coordinador.
 
 ## Considered Options
 

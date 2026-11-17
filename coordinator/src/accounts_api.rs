@@ -4,7 +4,9 @@
 #![allow(clippy::result_large_err)]
 
 use axum::Json;
-use axum::extract::{FromRequestParts, Path, State};
+use std::net::SocketAddr;
+
+use axum::extract::{ConnectInfo, FromRequestParts, Path, State};
 use axum::http::request::Parts;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -16,7 +18,7 @@ use webauthn_rs_proto::ResidentKeyRequirement;
 use crate::accounts::Account;
 use crate::protocol::{
     AccountRole, AccountView, BackofficeError, CreateAccount, EnrolmentLink, FinishLogin, FinishRegistration, Me,
-    PasskeyChallenge, SendEnrolment, SignIn, SignInOptions, StartEnrolment,
+    PasskeyChallenge, RequestSignInLink, SendEnrolment, SignIn, SignInOptions, StartEnrolment, UseSignInLink,
 };
 use crate::{AppState, mail, session};
 
@@ -119,6 +121,7 @@ pub async fn sign_in_options(State(state): State<AppState>) -> Json<SignInOption
     Json(SignInOptions {
         token: state.accounts.initial_id().is_some(),
         passkeys: state.webauthn.is_some(),
+        mail: state.mailer.is_some(),
     })
 }
 
@@ -128,6 +131,45 @@ pub async fn sign_in(State(state): State<AppState>, Json(req): Json<SignIn>) -> 
     match state.accounts.initial_id() {
         Some(id) if session::same_secret(&req.token, &state.backoffice_token) => session_for(&state, &id),
         _ => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+/// Emails a Sign-in link to the Account with that email. The answer is the same whether there is one
+/// or not, and is given before sending, so neither it nor its timing tells who has an Account; a failed
+/// send is only logged.
+pub async fn ask_for_sign_in_link(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<RequestSignInLink>,
+) -> Response {
+    if state.mailer.is_none() {
+        return error(BackofficeError::MailUnavailable);
+    }
+    let from = crate::feeds_api::client_ip(peer, &headers);
+    if !state.accounts.may_ask_for_sign_in_link(from) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    if let Some((account, token)) = state.accounts.sign_in_link(&req.email) {
+        let email = req.email;
+        tokio::spawn(async move {
+            let Some(mailer) = state.mailer.as_ref() else { return };
+            let link = mailer.link(&format!("/backoffice#sign-in={token}"));
+            let values = [("name", account.name.as_str()), ("link", link.as_str())];
+            let (subject, body) = (mail::en::SIGN_IN_SUBJECT, mail::en::SIGN_IN_BODY);
+            let _ = mailer
+                .send(&email, mail::fill(subject, &values), mail::fill(body, &values))
+                .await;
+        });
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// Signs in with a Sign-in link, which is spent.
+pub async fn use_sign_in_link(State(state): State<AppState>, Json(req): Json<UseSignInLink>) -> Response {
+    match state.accounts.use_sign_in_link(&req.token) {
+        Some(account) => session_for(&state, &account.id),
+        None => StatusCode::UNAUTHORIZED.into_response(),
     }
 }
 

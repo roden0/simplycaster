@@ -4,4 +4,8 @@ export type SignInOptions = {
 /**
  * The initial Admin still exists, so `BACKOFFICE_TOKEN` works.
  */
-token: boolean, passkeys: boolean, };
+token: boolean, passkeys: boolean, 
+/**
+ * `SMTP_URL` is set, so a Sign-in link can be asked for (ADR-0012).
+ */
+mail: boolean, };
