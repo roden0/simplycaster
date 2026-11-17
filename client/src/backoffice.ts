@@ -9,7 +9,7 @@ import type { SignIn } from "./protocol/SignIn.ts";
 import type { SignInOptions } from "./protocol/SignInOptions.ts";
 import type { StartEnrolment } from "./protocol/StartEnrolment.ts";
 import { getPasskey } from "./passkeys.ts";
-import { base, button, error, jsonRequest, load, passkeyProblem, reasonOf, registerPasskey, session } from "./backoffice-common.ts";
+import { base, button, error, features, jsonRequest, load, passkeyProblem, reasonOf, registerPasskey, session } from "./backoffice-common.ts";
 import { dashboardPage } from "./backoffice-dashboard.ts";
 import { roomsPage } from "./backoffice-rooms.ts";
 import { accountsPage } from "./backoffice-accounts.ts";
@@ -105,6 +105,7 @@ async function start() {
   const now = await load<Me>(`${base}/me`);
   if (!now) return; // a 401 already showed the sign-in
   me = now;
+  features.mail = now.mail;
   render();
 }
 

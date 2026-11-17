@@ -1,6 +1,7 @@
 // Rooms page (CU1, CU2, CU8, CU9, CU10): one row per Room, with what can be done to it right now.
 import { ROLE_LABEL, STATUS_LABEL, t } from "./i18n.ts";
 import { el } from "./dom.ts";
+import type { SendInvitation } from "./protocol/SendInvitation.ts";
 import type { RoomView } from "./protocol/RoomView.ts";
 import { base, button, copyableLink, dateTime, error, field, formDialog, pageHead, request } from "./backoffice-common.ts";
 
@@ -117,7 +118,12 @@ function renderRoom(room: RoomView): HTMLElement {
       "li",
       t("invitationEntry", { name: inv.name, role: t(ROLE_LABEL[inv.role]), status: t(STATUS_LABEL[inv.status]) }),
     );
-    if (!room.closed) item.append(copyableLink(`${location.origin}/i/${inv.token}`, t("invitationLink", { name: inv.name })));
+    if (!room.closed) {
+      const mailUrl = `${roomUrl(room)}/invitations/${encodeURIComponent(inv.name)}/mail`;
+      const send = async (email: string) => !!(await request(mailUrl, "POST", { email } satisfies SendInvitation));
+      const label = t("invitationLink", { name: inv.name });
+      item.append(copyableLink(`${location.origin}/i/${inv.token}`, label, { to: inv.name, send }));
+    }
     invitations.append(item);
   }
   body.append(el("h3", t("invitations")), invitations);

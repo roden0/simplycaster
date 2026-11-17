@@ -3,4 +3,8 @@
 /**
  * Secret of the link `/backoffice#enrol={token}`: one use, 72 h.
  */
-export type EnrolmentLink = { token: string, };
+export type EnrolmentLink = { 
+/**
+ * The Account it belongs to, to send the link by email.
+ */
+account: string, token: string, };

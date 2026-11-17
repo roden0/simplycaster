@@ -41,6 +41,12 @@ If no Admin can sign in any more, remove the Admins from `data/accounts.json` an
 
 Account emails are not stored: `data/accounts.json` keeps only a fingerprint (an HMAC with the key in `data/email.key`) and a hint such as `r•••@gmail.com`, so the Accounts page shows the hint. Keep `email.key` in the backups with the rest of `./data`; without it, the emails would have to be typed in again.
 
+### Sending links by email
+
+By default nobody gets an email: you copy each Invitation or enrolment link and send it however you like. To have the instance send them, set `SMTP_URL` and `SMTP_FROM` in `.env` (see `.env.example`) with any SMTP provider, such as [Resend](https://resend.com), Brevo, Postmark or your own server, and restart. The sender's domain must be verified with that provider, or the emails land in spam. Some hosting providers block outgoing SMTP ports on new servers; if sending fails, check that first.
+
+Then every Invitation and enrolment link gets a **Send by email** button next to **Copy**. The email is plain text with the link; the address you type is used to send it and not stored. For an enrolment link the address must be the Account's own, typed again since only its fingerprint is kept: a different one is refused, so a link cannot reach someone else by a typo. If the provider refuses the email, the page says so and the link is still there to copy. Recording never depends on email.
+
 Recordings live in `./data`, one folder per Room with its Tracks and a `room.json`.
 
 **Already running a reverse proxy** (Traefik, nginx, Coolify)? Remove the `caddy` service, publish `127.0.0.1:3000:3000` on `simplycaster`, and point your proxy at it. It must pass WebSockets through.
@@ -143,6 +149,7 @@ Avoid `latest`: pin a version and upgrade when you choose to.
 |---|---|---|
 | `BACKOFFICE_TOKEN` | (required) | Credential of the Initial Admin, at least 32 characters. |
 | `PUBLIC_URL` | `https://<DOMAIN>` in Compose | Address people use, for passkeys, which belong to this domain (changing it means registering them again), and for the feeds of published Podcasts. Without it only the token works, and Podcasts are off. |
+| `SMTP_URL`, `SMTP_FROM` | empty | Sending links by email, see above. `SMTP_URL` like `smtps://user:password@smtp.example.com:465`; `SMTP_FROM` like `SimplyCaster <studio@example.com>`. Needs `PUBLIC_URL`. |
 | `TURN_PUBLIC_IP` | empty | Public IPv4 for TURN. Empty: only direct connections. |
 | `TURN_PORT` | `3478` | STUN/TURN UDP port. |
 | `TURN_RELAY_PORTS` | `49160-49199` | UDP relay range. |

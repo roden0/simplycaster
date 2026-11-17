@@ -8,6 +8,7 @@ mod feeds_api;
 mod feeds_pages;
 mod flac;
 mod live;
+mod mail;
 mod protocol;
 mod realign;
 mod room;
@@ -80,6 +81,8 @@ pub struct Coordinator {
     registrations: accounts_api::Registrations,
     /// The Feed Manager (ADR-0013); `None` without `PUBLIC_URL`, since feeds need absolute URLs.
     feeds: Option<feeds::Feeds>,
+    /// Sends links by email (ADR-0012); `None` without `SMTP_URL`.
+    mailer: Option<mail::Mailer>,
 }
 
 type AppState = Arc<Coordinator>;
@@ -215,6 +218,7 @@ async fn main() {
     let feeds = public_url
         .as_deref()
         .map(|url| feeds::Feeds::load(&data, url).unwrap_or_else(|e| panic!("cannot read the Podcasts: {e}")));
+    let mailer = mail::Mailer::from_env(public_url.as_deref()).unwrap_or_else(|e| panic!("{e}"));
     let rooms = load_rooms(&data);
     let past = rooms.len();
     let state = Arc::new(Coordinator {
@@ -228,6 +232,7 @@ async fn main() {
         logins: Default::default(),
         registrations: Default::default(),
         feeds,
+        mailer,
     });
     let passkeys = state.webauthn.is_some();
     let live_info = state.turn.as_ref().map(live::Turn::describe);
@@ -275,11 +280,19 @@ async fn main() {
             "/api/backoffice/accounts/{id}/enrolment",
             post(accounts_api::enrol_again),
         )
+        .route(
+            "/api/backoffice/accounts/{id}/enrolment/mail",
+            post(accounts_api::mail_enrolment),
+        )
         .route(api, get(backoffice::list).post(backoffice::create_room))
         .route(&format!("{api}/{{id}}"), axum::routing::delete(backoffice::delete_room))
         .route(
             &format!("{api}/{{id}}/invitations"),
             post(backoffice::create_invitation),
+        )
+        .route(
+            &format!("{api}/{{id}}/invitations/{{name}}/mail"),
+            post(backoffice::mail_invitation),
         )
         .route(&format!("{api}/{{id}}/close"), post(backoffice::close))
         .route(

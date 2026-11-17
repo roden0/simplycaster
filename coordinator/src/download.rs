@@ -186,6 +186,7 @@ mod tests {
             logins: Default::default(),
             registrations: Default::default(),
             feeds: None,
+            mailer: None,
         });
         let keys = session::Keys::new(b"test");
 

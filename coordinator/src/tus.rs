@@ -473,6 +473,7 @@ mod tests {
             logins: Default::default(),
             registrations: Default::default(),
             feeds: None,
+            mailer: None,
         });
         (state, dir, ana, bea)
     }
