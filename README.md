@@ -104,7 +104,7 @@ Show notes appear as written on those pages, but no script runs there: whatever 
 
 **5. Submit it.** Paste the feed address (`https://<DOMAIN>/podcasts/<podcast>/feed.xml`) into [Apple Podcasts Connect](https://podcastsconnect.apple.com), [Spotify for Creators](https://creators.spotify.com) or the [Podcast Index](https://podcastindex.org/add); most other apps (Pocket Casts, Overcast, AntennaPod) find it through those or accept the address directly.
 
-The files live in `./data/podcasts/<podcast>/` and go into the backups with everything else, so budget disk space for the mp3s too: the Dashboard shows what is left. Behind your own reverse proxy, allow uploads of at least 500 MB (for example `client_max_body_size 500m;` in nginx).
+The files live in `./data/podcasts/<podcast>/` and go into the backups with everything else, so budget disk space for the mp3s too: the Dashboard shows what is left. Behind your own reverse proxy, allow uploads of at least 500 MB (for example `client_max_body_size 500m;` in nginx). Do not let it compress responses: compression breaks byte-range requests, which Apple Podcasts requires for streaming. In Coolify, turn off *Enable Gzip Compression* in the app's *Advanced* settings; with Cloudflare in front, purge its cache afterwards.
 
 ## Backups
 
