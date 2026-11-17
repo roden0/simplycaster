@@ -313,7 +313,12 @@ async fn main() {
             get(feeds_api::get).put(feeds_api::edit).delete(feeds_api::delete),
         )
         .route(&format!("{pods}/{{slug}}/feed"), post(feeds_api::regenerate))
-        .route(&format!("{pods}/{{slug}}/cover"), put(feeds_api::upload_cover))
+        .route(
+            &format!("{pods}/{{slug}}/cover"),
+            get(feeds_api::cover)
+                .put(feeds_api::upload_cover)
+                .delete(feeds_api::delete_cover),
+        )
         .route(&format!("{pods}/{{slug}}/episodes"), post(feeds_api::create_episode))
         .route(
             &format!("{pods}/{{slug}}/episodes/{{ep}}"),
@@ -326,7 +331,9 @@ async fn main() {
         )
         .route(
             &format!("{pods}/{{slug}}/episodes/{{ep}}/{{kind}}"),
-            put(feeds_api::upload_episode_file),
+            get(feeds_api::episode_file)
+                .put(feeds_api::upload_episode_file)
+                .delete(feeds_api::delete_episode_file),
         )
         .fallback(client_files::fallback)
         // Revalidate on every load so a new build is never hidden behind a cached index.html.

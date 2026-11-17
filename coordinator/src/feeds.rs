@@ -429,6 +429,41 @@ impl Feeds {
         result
     }
 
+    /// The stored cover, image or transcript, published or not: for the backoffice to show it.
+    pub fn stored(&self, slug: &str, ep: Option<&str>, kind: Upload) -> Option<PathBuf> {
+        let podcasts = self.podcasts.lock().unwrap();
+        let p = podcasts.iter().find(|p| p.slug == slug)?;
+        let name = match (kind, ep) {
+            (Upload::Cover, None) => p.cover.clone(),
+            (Upload::Image | Upload::Transcript, Some(ep)) => {
+                let e = p.episodes.iter().find(|e| e.slug == ep)?;
+                if kind == Upload::Image {
+                    e.image.clone()
+                } else {
+                    e.transcript.clone()
+                }
+            }
+            _ => None,
+        }?;
+        Some(self.folder(slug).join(name))
+    }
+
+    /// Drops the cover, or an Episode's image or transcript; the mp3 is only ever replaced.
+    pub fn remove(&self, slug: &str, ep: Option<&str>, kind: Upload) -> Result<(), BackofficeError> {
+        let dir = self.folder(slug);
+        let gone = self.change(slug, |p| match (kind, ep) {
+            (Upload::Cover, None) => Ok(p.cover.take()),
+            (Upload::Image, Some(ep)) => Ok(episode(p, ep)?.image.take()),
+            (Upload::Transcript, Some(ep)) => Ok(episode(p, ep)?.transcript.take()),
+            _ => Err(BackofficeError::NotFound),
+        })?;
+        // After regenerating, so the feed never points at a file already gone.
+        if let Some(name) = gone {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+        Ok(())
+    }
+
     /// A file listed at the last generation, so never a draft's. A private Podcast's only with one of
     /// its keys; a public one ignores the key, so subscribers keep working if it stops being private.
     pub fn public_file(&self, slug: &str, file: &str, key: Option<&str>, from: IpAddr) -> Option<Served> {
@@ -910,6 +945,32 @@ mod tests {
         assert!(!f.folder(&slug).join("cover.png").exists());
         let again = Feeds::load(&dir, "https://pod.example").unwrap();
         assert!(again.public_file(&slug, "cover.jpg", None, IP).is_some());
+    }
+
+    #[test]
+    fn a_removed_cover_or_image_leaves_the_feed_and_the_disk() {
+        let (f, _) = feeds();
+        let slug = f.create("Show", "a").unwrap();
+        let ep = f.create_episode(&slug, details("Uno", Some(0.0))).unwrap();
+        upload(&f, &slug, Some(&ep), Upload::Audio, "mp3", b"ID3");
+        upload(&f, &slug, None, Upload::Cover, "png", b"png");
+        upload(&f, &slug, Some(&ep), Upload::Image, "jpg", b"jpg");
+        assert!(f.stored(&slug, None, Upload::Cover).unwrap().ends_with("cover.png"));
+        assert!(f.stored(&slug, Some(&ep), Upload::Image).unwrap().ends_with("uno.jpg"));
+        assert!(f.stored(&slug, Some(&ep), Upload::Audio).is_none());
+
+        f.remove(&slug, None, Upload::Cover).unwrap();
+        f.remove(&slug, Some(&ep), Upload::Image).unwrap();
+        assert!(f.stored(&slug, None, Upload::Cover).is_none());
+        assert!(!f.folder(&slug).join("cover.png").exists());
+        assert!(!f.folder(&slug).join("uno.jpg").exists());
+        assert!(f.public_file(&slug, "cover.png", None, IP).is_none());
+        let xml = std::fs::read_to_string(f.folder(&slug).join(FEED)).unwrap();
+        assert!(!xml.contains("cover.png") && !xml.contains("uno.jpg"));
+        assert_eq!(
+            f.remove(&slug, Some(&ep), Upload::Audio),
+            Err(BackofficeError::NotFound)
+        );
     }
 
     #[test]
