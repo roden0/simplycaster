@@ -380,6 +380,7 @@ dependencies = [
  "axum",
  "futures-util",
  "jsonwebtoken",
+ "nix 0.31.3",
  "rust-embed",
  "serde",
  "serde_json",
