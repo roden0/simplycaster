@@ -50,7 +50,7 @@ const takeStatus = app.appendChild(el("p"));
 takeStatus.setAttribute("role", "status");
 const takesList = app.appendChild(el("div"));
 const rosterList = el("ul");
-app.append(el("h2", t("participants")), rosterList);
+if (invite) app.append(el("h2", t("participants")), rosterList);
 
 /** Coordinator clock minus local clock; known after the first clock sync. */
 let clockOffsetMs: number | undefined;
@@ -77,6 +77,9 @@ let lastRoster: ParticipantView[] = [];
 
 if (!invite) {
   status.textContent = t("noInvitation");
+  const signIn = el("a", t("hostSignIn"));
+  signIn.href = "/backoffice";
+  app.appendChild(el("p")).append(signIn);
 } else {
   status.textContent = t("connecting");
   headphonesNote.append(el("strong", t("useHeadphones")));
