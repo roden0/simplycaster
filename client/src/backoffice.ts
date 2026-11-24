@@ -1,5 +1,5 @@
 // Backoffice (CU1, CU2, CU8, CU9, ADR-0011): sign in, then a page per section under one menu.
-import "./backoffice.css";
+import "./styles.css";
 import { applyLocale, t } from "./i18n.ts";
 import { el } from "./dom.ts";
 import type { FinishLogin } from "./protocol/FinishLogin.ts";

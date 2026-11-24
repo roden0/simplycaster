@@ -1,4 +1,4 @@
-/* Backoffice: functional and plain, readable in light and dark. Spacing on a 0.25rem scale. */
+/* Shared by the Room page and the backoffice: functional and plain, readable in light and dark. Spacing on a 0.25rem scale. */
 :root {
   color-scheme: light dark;
   --bg: #f7f7f5;
