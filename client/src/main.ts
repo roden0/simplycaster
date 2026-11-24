@@ -35,7 +35,7 @@ const invite = location.pathname.match(/^\/i\/([^/]+)$/)?.[1];
 applyLocale();
 document.title = t("appTitle");
 app.append(el("h1", t("appTitle")));
-app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
+app.append(el("small", t("buildInfo", { build: __BUILD__ })));
 const status = app.appendChild(el("p"));
 status.setAttribute("role", "status");
 // Shown before the microphone is enabled: with the live conversation, no headphones means echo in every Track.

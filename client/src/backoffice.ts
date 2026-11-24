@@ -31,7 +31,7 @@ import { podcastPage, podcastsPage } from "./backoffice-podcasts.ts";
 const main = document.querySelector<HTMLElement>("#app")!;
 const header = el("header");
 header.className = "bar";
-const footer = el("footer", t("buildInfo", { build: __BUILD_TIME__ }));
+const footer = el("footer", t("buildInfo", { build: __BUILD__ }));
 main.before(header);
 main.after(footer);
 

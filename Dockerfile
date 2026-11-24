@@ -5,6 +5,8 @@ WORKDIR /src/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
 COPY client/ ./
+# The commit shown under the header; Coolify passes it only with "Source commit availability: Available during build".
+ARG SOURCE_COMMIT
 RUN npm run build
 
 FROM rust:1.98-slim-trixie AS coordinator

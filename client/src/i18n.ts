@@ -10,7 +10,7 @@ const en = {
   listSeparator: " · ",
   rosterEntry: "{name} · {role} · {details}",
   micProblemEntry: "⚠ {problem}",
-  buildInfo: "build {build} UTC",
+  buildInfo: "build {build}",
   noInvitation: "Open the personal link from your invitation to join the Room.",
   invalidInvitation:
     "This invitation is not valid, or its Room has been closed.",
