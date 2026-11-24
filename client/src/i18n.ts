@@ -12,6 +12,7 @@ const en = {
   micProblemEntry: "⚠ {problem}",
   buildInfo: "build {build} UTC",
   noInvitation: "Open the personal link from your invitation to join the Room.",
+  hostSignIn: "Sign in to manage Rooms",
   invalidInvitation:
     "This invitation is not valid, or its Room has been closed.",
   roomClosed: "The Host closed the Room. Thank you for recording!",
