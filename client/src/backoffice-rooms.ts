@@ -51,7 +51,7 @@ async function refresh() {
     return;
   }
   // Once, above the list: it explains the FLAC button of every closed Room.
-  hint.textContent = rooms.some((r) => r.closed) ? t("flacHint") : "";
+  hint.textContent = rooms.some((r) => r.closed && r.takeNumbers.length) ? t("flacHint") : "";
   list.replaceChildren(...rooms.map(renderRoom));
   // A link from the dashboard names a Room in the fragment: show it.
   const target = decodeURIComponent(location.hash.slice(1));
@@ -155,6 +155,21 @@ function renderRoom(room: RoomView): HTMLElement {
 }
 
 function closedActions(room: RoomView, actions: HTMLElement) {
+  if (room.takeNumbers.length) audioActions(room, actions);
+  actions.append(
+    button(
+      t("deleteRoom"),
+      async () => {
+        if (!confirm(t("deleteRoomConfirm", { name: room.displayName }))) return;
+        if (await request(roomUrl(room), "DELETE")) refresh();
+      },
+      "danger",
+    ),
+  );
+}
+
+/** Download and FLAC: only for a Room with Takes, there is nothing else to give. */
+function audioActions(room: RoomView, actions: HTMLElement) {
   const download = el("a", t("downloadRoom"));
   download.href = `${roomUrl(room)}/zip`;
   download.className = "button";
@@ -182,16 +197,6 @@ function closedActions(room: RoomView, actions: HTMLElement) {
       }),
     );
   }
-  actions.append(
-    button(
-      t("deleteRoom"),
-      async () => {
-        if (!confirm(t("deleteRoomConfirm", { name: room.displayName }))) return;
-        if (await request(roomUrl(room), "DELETE")) refresh();
-      },
-      "danger",
-    ),
-  );
 }
 
 /** Deleting a Take never renumbers the others: their files keep their names. */
