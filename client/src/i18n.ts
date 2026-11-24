@@ -8,7 +8,6 @@ const en = {
   appTitle: "SimplyCaster",
   // Composed lines: templates, so another language can change the order and the separator.
   listSeparator: " · ",
-  rosterEntry: "{name} · {role} · {details}",
   micProblemEntry: "⚠ {problem}",
   buildInfo: "build {build} UTC",
   noInvitation: "Open the personal link from your invitation to join the Room.",
@@ -16,7 +15,7 @@ const en = {
   invalidInvitation:
     "This invitation is not valid, or its Room has been closed.",
   roomClosed: "The Host closed the Room. Thank you for recording!",
-  joinedAs: "You are {name} ({role})",
+  whoAmI: "{name} · {role}",
   connecting: "Connecting…",
   reconnecting: "Connection lost. Reconnecting…",
   enableMicrophone: "Enable microphone",
@@ -49,6 +48,10 @@ const en = {
   liveInterrupted: "live: interrupted",
   liveFailed: "live: cannot connect",
   participants: "Participants",
+  you: "{name} (you)",
+  recording: "Recording",
+  noTake: "No Take is being recorded.",
+  yourMicrophone: "Your microphone",
   roleHost: "Host",
   roleGuest: "Guest",
   statusConnected: "connected",

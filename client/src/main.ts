@@ -34,24 +34,55 @@ const invite = location.pathname.match(/^\/i\/([^/]+)$/)?.[1];
 
 applyLocale();
 document.title = t("appTitle");
-app.append(el("h1", t("appTitle")));
-app.append(el("small", t("buildInfo", { build: __BUILD_TIME__ })));
+const brand = el("span", t("appTitle"));
+brand.className = "brand";
+/** Who this Participant is, once welcomed. */
+const who = el("span");
+who.className = "who";
+const bar = el("header");
+bar.className = "bar";
+bar.append(brand, who);
+document.body.prepend(bar);
+document.body.append(el("footer", t("buildInfo", { build: __BUILD_TIME__ })));
 const status = app.appendChild(el("p"));
 status.setAttribute("role", "status");
-// Shown before the microphone is enabled: with the live conversation, no headphones means echo in every Track.
-const headphonesNote = app.appendChild(el("p"));
-const micRow = app.appendChild(el("p"));
-const meterRow = app.appendChild(el("p"));
-const calibrationRow = app.appendChild(el("p"));
-const takeControls = app.appendChild(el("p"));
-const micWarning = app.appendChild(el("p"));
+status.className = "lead";
+
+/** A titled card of the Room page. */
+function card(title: string, ...children: HTMLElement[]): HTMLElement {
+  const section = el("section");
+  section.className = "card";
+  section.append(el("h2", title), ...children);
+  return section;
+}
+
+// Recording first: the Take is what everyone watches; a microphone problem shows right above it.
+const micWarning = el("p");
 micWarning.setAttribute("role", "alert");
-const takeStatus = app.appendChild(el("p"));
+micWarning.className = "alert";
+const takeStatus = el("p", t("noTake"));
 takeStatus.setAttribute("role", "status");
-const takesList = app.appendChild(el("div"));
+takeStatus.className = "take-status";
+const takeControls = el("div");
+takeControls.className = "actions";
+const recordingCard = card(t("recording"), micWarning, takeStatus, takeControls);
+recordingCard.classList.add("take");
+// Shown before the microphone is enabled: with the live conversation, no headphones means echo in every Track.
+const headphonesNote = el("p", t("useHeadphones"));
+headphonesNote.className = "alert";
+const micRow = el("div");
+const meterRow = el("div");
+const calibrationRow = el("div");
+const micCard = card(t("yourMicrophone"), headphonesNote, micRow, meterRow, calibrationRow);
 const rosterList = el("ul");
-const rosterHeading = el("h2", t("participants"));
-if (invite) app.append(rosterHeading, rosterList);
+rosterList.className = "plain roster";
+const rosterCard = card(t("participants"), rosterList);
+const takesList = el("div");
+takesList.className = "takes";
+const room = el("div");
+room.className = "room";
+room.append(recordingCard, micCard, rosterCard, takesList);
+if (invite) app.append(room);
 
 /** Coordinator clock minus local clock; known after the first clock sync. */
 let clockOffsetMs: number | undefined;
@@ -83,8 +114,8 @@ if (!invite) {
   app.appendChild(el("p")).append(signIn);
 } else {
   status.textContent = t("connecting");
-  headphonesNote.append(el("strong", t("useHeadphones")));
   const enable = micRow.appendChild(el("button", t("enableMicrophone")));
+  enable.className = "primary";
   enable.onclick = () => {
     enable.remove();
     setupMicrophone();
@@ -97,7 +128,7 @@ if (!invite) {
 /** Nothing to join: only the reason stays on the page. */
 function invalidInvitation() {
   status.textContent = t("invalidInvitation");
-  for (const e of [headphonesNote, micRow, meterRow, calibrationRow, rosterHeading, rosterList]) e.remove();
+  room.remove();
 }
 
 /** Exchanges the Invitation for a session cookie (ADR-0009), then opens the Room's WebSocket with it. */
@@ -152,10 +183,8 @@ async function connect(invite: string) {
     switch (msg.type) {
       case "welcome":
         myName = msg.name;
-        status.textContent = t("joinedAs", {
-          name: msg.name,
-          role: t(ROLE_LABEL[msg.role]),
-        });
+        status.textContent = "";
+        who.textContent = t("whoAmI", { name: msg.name, role: t(ROLE_LABEL[msg.role]) });
         isHost = msg.role === "host";
         toneHz = msg.toneHz;
         live ??= createLive(
@@ -188,10 +217,12 @@ async function connect(invite: string) {
         break;
       case "takeStarted":
         activeTake = { take: msg.take, startTime: msg.startTime };
+        showTakeState();
         startTrack();
         break;
       case "takeStopped":
         activeTake = undefined;
+        showTakeState();
         // Sent again on every reconnect: only act on the part being recorded.
         if (recordingTake !== msg.take) break;
         recordingTake = 0;
@@ -229,20 +260,32 @@ async function connect(invite: string) {
 function renderRoster(participants: ParticipantView[]) {
   rosterList.replaceChildren(
     ...participants.map((p) => {
+      const connected = p.status === "connected";
       const clock =
         p.clockOffsetMs === null
           ? t("clockPending")
           : t("clockOffset", { offset: p.clockOffsetMs.toFixed(1), rtt: p.clockRttMs!.toFixed(1) });
       const liveState = p.name === myName ? undefined : live?.state(p.name);
       const liveLabel = liveState && LIVE_LABEL[liveState];
-      const details = [
-        t(STATUS_LABEL[p.status]),
-        ...(p.syncing ? [t("statusSyncing")] : []),
-        ...(p.micProblem ? [t("micProblemEntry", { problem: t(MIC_PROBLEM_LABEL[p.micProblem]) })] : []),
-        ...(liveLabel ? [t(liveLabel)] : []),
-        ...(p.status === "connected" ? [clock] : []),
-      ];
-      return el("li", t("rosterEntry", { name: p.name, role: t(ROLE_LABEL[p.role]), details: list(details) }));
+      const state = el("span", t(STATUS_LABEL[p.status]));
+      state.className = `badge ${connected ? "on" : "off"}`;
+      const head = el("div");
+      head.className = "row-head";
+      const name = el("strong", p.name === myName ? t("you", { name: p.name }) : p.name);
+      const role = el("span", t(ROLE_LABEL[p.role]));
+      role.className = "badge";
+      head.append(name, role, state);
+      if (p.syncing) head.append(Object.assign(el("span", t("statusSyncing")), { className: "badge" }));
+      const item = el("li");
+      item.append(head);
+      if (p.micProblem) {
+        const problem = el("p", t("micProblemEntry", { problem: t(MIC_PROBLEM_LABEL[p.micProblem]) }));
+        problem.className = "warn";
+        item.append(problem);
+      }
+      const details = [...(liveLabel ? [t(liveLabel)] : []), ...(connected ? [clock] : [])];
+      if (details.length) item.append(Object.assign(el("p", list(details)), { className: "meta" }));
+      return item;
     }),
   );
 }
@@ -258,13 +301,17 @@ const LIVE_LABEL: Partial<Record<RTCPeerConnectionState, MessageKey>> = {
 
 // --- Takes (CU4, CU5) ---
 
+let hostButtons: { record: HTMLButtonElement; stop: HTMLButtonElement; close: HTMLButtonElement } | undefined;
+
 function renderHostControls() {
   const record = el("button", t("record"));
+  record.className = "record";
   const stop = el("button", t("stop"));
   record.onclick = () => send({ type: "record" });
   stop.onclick = () => send({ type: "stop" });
   // CU8 from inside the Room, with the same warning as the backoffice.
   const close = el("button", t("closeRoom"));
+  close.className = "danger push";
   close.onclick = () => {
     if (activeTake) {
       takeStatus.textContent = t("errorRecording");
@@ -274,7 +321,18 @@ function renderHostControls() {
     const question = pending.length ? t("closeHerePending", { names: list(pending) }) : t("closeHere");
     if (confirm(question)) send({ type: "close" });
   };
-  takeControls.replaceChildren(record, " ", stop, " ", close);
+  takeControls.replaceChildren(record, stop, close);
+  hostButtons = { record, stop, close };
+  showTakeState();
+}
+
+/** Marks the Room as recording, and lets the Host press only what applies now. */
+function showTakeState() {
+  recordingCard.classList.toggle("live", !!activeTake);
+  if (!hostButtons) return;
+  hostButtons.record.disabled = !!activeTake;
+  hostButtons.stop.disabled = !activeTake;
+  hostButtons.close.disabled = !!activeTake;
 }
 
 /** Starts recording the active Take as soon as microphone and clock are ready (CU4, CU7). */
@@ -402,6 +460,7 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
   let section = takesList.querySelector<HTMLElement>(`[data-take="${take}"]`);
   if (!section) {
     section = el("section");
+    section.className = "card";
     section.dataset.take = String(take);
     takesList.prepend(section);
   }
@@ -413,6 +472,7 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
   );
   progress.setAttribute("role", "status");
   const list = el("ul");
+  list.className = "plain";
   const query = sessionQuery;
   list.append(
     ...tracks.map((tr) => {
@@ -428,9 +488,10 @@ function renderTakeTracks(take: number, expected: string[], pending: string[], t
       return item;
     }),
   );
-  section.replaceChildren(el("h3", t("takeHeading", { take })), progress, list);
+  section.replaceChildren(el("h2", t("takeHeading", { take })), progress, list);
   if (tracks.length > 0) {
     const zip = el("a", t("downloadAllZip"));
+    zip.className = "button";
     zip.href = `/takes/${take}/zip${query}`;
     section.append(zip);
   }
@@ -459,22 +520,30 @@ function setupCalibration(rec: Recorder) {
     button.disabled = false;
     showLatency(trip === undefined);
   };
-  calibrationRow.replaceChildren(button, " ", latencyText, el("br"), el("small", t("calibrateHint")));
+  const row = el("div");
+  row.className = "actions";
+  row.append(button, latencyText);
+  const hint = el("p", t("calibrateHint"));
+  hint.className = "meta";
+  calibrationRow.replaceChildren(row, hint);
   showLatency();
 }
 
 // --- Microphone choice and input level (CU3) ---
 
 async function setupMicrophone() {
+  headphonesNote.remove();
   const label = el("label", t("microphone"));
+  label.className = "field";
   const select = el("select");
-  label.append(" ", select);
+  label.append(select);
   const meterLabel = el("label", t("inputLevel"));
+  meterLabel.className = "field";
   const meter = el("meter");
   meter.min = 0;
   meter.max = 1;
   meter.high = 0.8;
-  meterLabel.append(" ", meter);
+  meterLabel.append(meter);
   micRow.append(label);
   meterRow.append(meterLabel);
 

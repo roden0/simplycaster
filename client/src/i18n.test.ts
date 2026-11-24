@@ -10,6 +10,7 @@ test("the first browser language with a catalog wins, by tag or by language", ()
 });
 
 test("composed lines come from templates", () => {
-  assert.equal(t("rosterEntry", { name: "ana", role: "Guest", details: list(["connected", "syncing"]) }), "ana · Guest · connected · syncing");
+  assert.equal(t("whoAmI", { name: "ana", role: "Guest" }), "ana · Guest");
+  assert.equal(list(["connected", "syncing"]), "connected · syncing");
   assert.equal(t("errorRoomFull", { max: 5 }), "A Room holds at most 5 Participants.");
 });
