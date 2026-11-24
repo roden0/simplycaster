@@ -13,7 +13,8 @@ list.className = "rows";
 /** Where a new enrolment link is shown, above the list. */
 const enrolmentResult = el("div");
 
-function showEnrolmentLink(name: string, link: EnrolmentLink, email?: string) {
+/** `mail` false for the initial Admin: it has no email to send to. */
+function showEnrolmentLink(name: string, link: EnrolmentLink, email?: string, mail = true) {
   const { account, token } = link;
   const mailUrl = `${base}/accounts/${encodeURIComponent(account)}/enrolment/mail`;
   const send = async (to: string) =>
@@ -22,7 +23,7 @@ function showEnrolmentLink(name: string, link: EnrolmentLink, email?: string) {
   const box = el("div");
   box.className = "notice";
   box.setAttribute("role", "status");
-  box.append(el("p", t("enrolmentLink", { name })), copyableLink(url, t("enrolmentLinkLabel", { name }), { to: name, email, send }));
+  box.append(el("p", t("enrolmentLink", { name })), copyableLink(url, t("enrolmentLinkLabel", { name }), mail ? { to: name, email, send } : undefined));
   enrolmentResult.replaceChildren(box);
 }
 
@@ -48,7 +49,7 @@ function renderAccount(account: AccountView): HTMLElement {
   actions.append(
     button(t("newEnrolmentLink"), async () => {
       const link = await request<EnrolmentLink>(`${url}/enrolment`, "POST", {});
-      if (link && link !== true) showEnrolmentLink(name, link);
+      if (link && link !== true) showEnrolmentLink(name, link, undefined, !account.initial);
     }),
     button(
       t("deleteAccount"),
