@@ -50,7 +50,8 @@ const takeStatus = app.appendChild(el("p"));
 takeStatus.setAttribute("role", "status");
 const takesList = app.appendChild(el("div"));
 const rosterList = el("ul");
-if (invite) app.append(el("h2", t("participants")), rosterList);
+const rosterHeading = el("h2", t("participants"));
+if (invite) app.append(rosterHeading, rosterList);
 
 /** Coordinator clock minus local clock; known after the first clock sync. */
 let clockOffsetMs: number | undefined;
@@ -93,6 +94,12 @@ if (!invite) {
 
 // --- Room connection and clock sync (CU3) ---
 
+/** Nothing to join: only the reason stays on the page. */
+function invalidInvitation() {
+  status.textContent = t("invalidInvitation");
+  for (const e of [headphonesNote, micRow, meterRow, calibrationRow, rosterHeading, rosterList]) e.remove();
+}
+
 /** Exchanges the Invitation for a session cookie (ADR-0009), then opens the Room's WebSocket with it. */
 async function connect(invite: string) {
   let res: Response | undefined;
@@ -105,10 +112,7 @@ async function connect(invite: string) {
   } catch {
     // Coordinator unreachable (a redeploy): keep trying, as a dropped socket does.
   }
-  if (res?.status === 404) {
-    status.textContent = t("invalidInvitation");
-    return;
-  }
+  if (res?.status === 404) return invalidInvitation();
   if (!res?.ok) {
     status.textContent = t("reconnecting");
     setTimeout(() => connect(invite), RECONNECT_MS);
@@ -214,10 +218,7 @@ async function connect(invite: string) {
   ws.onclose = () => {
     clearInterval(resync);
     // The Coordinator rejects unknown invitations before the upgrade, so the socket never opens.
-    if (!opened) {
-      status.textContent = t("invalidInvitation");
-      return;
-    }
+    if (!opened) return invalidInvitation();
     // Reconnecting would only take the Invitation back from the other window, or find it expired.
     if (ended) return;
     status.textContent = t("reconnecting");
