@@ -1,3 +1,4 @@
+import "./styles.css";
 import { applyLocale, list, ROLE_LABEL, STATUS_LABEL, t, type MessageKey } from "./i18n.ts";
 import { el } from "./dom.ts";
 import { estimateOffset, localNow, type ClockSample } from "./clock.ts";
